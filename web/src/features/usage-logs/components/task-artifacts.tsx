@@ -114,9 +114,11 @@ function LegacyAudioPreview(props: { taskId: string }) {
 
   return (
     <>
-      <button
+      <Button
         type='button'
-        className='group flex items-center gap-1 text-left text-xs'
+        variant='outline'
+        size='xs'
+        className='rounded-lg'
         onClick={() => setOpen(true)}
       >
         <HugeiconsIcon
@@ -128,7 +130,7 @@ function LegacyAudioPreview(props: { taskId: string }) {
         <span className='text-foreground leading-snug group-hover:underline'>
           {t('Click to preview audio')}
         </span>
-      </button>
+      </Button>
       <AudioPreviewDialog
         open={open}
         onOpenChange={setOpen}
@@ -245,7 +247,7 @@ function TaskArtifactCard(props: { artifact: TaskArtifact }) {
   }
 
   return (
-    <Card size='sm'>
+    <Card size='sm' className='min-w-0 overflow-hidden rounded-xl shadow-none'>
       <CardHeader>
         <CardTitle className='flex min-w-0 items-center gap-1.5'>
           <HugeiconsIcon
@@ -408,7 +410,10 @@ export function TaskArtifactsCell(props: { log: TaskLog }) {
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className='text-muted-foreground cursor-help text-xs' />
+              <span
+                tabIndex={0}
+                className='text-muted-foreground cursor-help text-xs outline-offset-2'
+              />
             }
           >
             {t('Result not retained')}
@@ -432,13 +437,15 @@ export function TaskArtifactsCell(props: { log: TaskLog }) {
   return (
     <>
       {previewMode === 'legacy-video' ? (
-        <button
+        <Button
           type='button'
-          className='text-foreground text-xs hover:underline'
+          variant='outline'
+          size='xs'
+          className='rounded-lg'
           onClick={() => setOpen(true)}
         >
           {t('Click to preview video')}
-        </button>
+        </Button>
       ) : (
         <Button
           type='button'
@@ -472,8 +479,12 @@ export function TaskArtifactsCell(props: { log: TaskLog }) {
             </span>
           )
         }
+        description={`${t('Task ID')}: ${props.log.task_id}`}
+        descriptionClassName='break-all'
         contentClassName={
-          previewMode === 'legacy-video' ? 'sm:max-w-xl' : 'sm:max-w-4xl'
+          previewMode === 'legacy-video'
+            ? 'rounded-2xl sm:max-w-xl'
+            : 'rounded-2xl sm:max-w-4xl'
         }
         contentHeight='auto'
         bodyClassName='pr-2 sm:pr-4'

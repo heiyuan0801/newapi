@@ -70,11 +70,11 @@ function Fixture() {
     </UsageLogsProvider>
   )
 }
-async function renderMobileFilter() {
+async function renderMobileFilter(isMobile = true) {
   const original = window.matchMedia
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
     ...original(query),
-    matches: query === '(max-width: 640px)',
+    matches: isMobile && query === '(max-width: 640px)',
   }))
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
     data: {
@@ -173,14 +173,21 @@ it('applies mobile drawer filters only when Search is pressed', async () => {
 it('keeps all quick actions visible without opening a menu', async () => {
   await renderMobileFilter()
   const user = userEvent.setup()
-  for (const name of ['Hide', 'Filter', 'Search', 'Export', 'View']) {
+  for (const name of [
+    'Hide',
+    'Filter',
+    'Search',
+    'Refresh',
+    'Export',
+    'View',
+  ]) {
     expect(screen.getByRole('button', { name })).toBeVisible()
   }
   expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Hide' }))
   expect(screen.getByRole('button', { name: 'Show' })).toBeVisible()
   screen.getByRole('button', { name: 'Show' }).focus()
-  for (const name of ['Filter', 'Search', 'Export', 'View']) {
+  for (const name of ['Filter', 'Search', 'Refresh', 'Export', 'View']) {
     await user.tab()
     expect(screen.getByRole('button', { name })).toHaveFocus()
   }
@@ -259,16 +266,23 @@ it('collapses only date and statistics while keeping the right-hand quick action
     screen
       .getByRole('button', { name: /^\d{4}-\d{2}/ })
       .getAttribute('aria-label') ?? ''
-  expect(await screen.findByText('Usage')).toBeVisible()
+  expect(await screen.findByText('Period Consumption')).toBeVisible()
   await user.click(screen.getByRole('button', { name: 'Collapse' }))
   expect(screen.getByRole('button', { name: 'Expand' })).toHaveAttribute(
     'aria-expanded',
     'false'
   )
   expect(screen.queryByRole('button', { name: date })).not.toBeInTheDocument()
-  expect(screen.queryByText('Usage')).not.toBeInTheDocument()
+  expect(screen.queryByText('Period Consumption')).not.toBeInTheDocument()
   const actions = screen.getByRole('group', { name: 'Actions' })
-  for (const name of ['Hide', 'Filter', 'Search', 'Export', 'View']) {
+  for (const name of [
+    'Hide',
+    'Filter',
+    'Search',
+    'Refresh',
+    'Export',
+    'View',
+  ]) {
     expect(within(actions).getByRole('button', { name })).toBeVisible()
   }
   expect(
@@ -280,7 +294,7 @@ it('collapses only date and statistics while keeping the right-hand quick action
     'true'
   )
   expect(screen.getByRole('button', { name: date })).toBeVisible()
-  expect(await screen.findByText('Usage')).toBeVisible()
+  expect(await screen.findByText('Period Consumption')).toBeVisible()
 })
 
 it.each([
@@ -344,4 +358,93 @@ it('shows the seconds of the selected range on the trigger', () => {
       name: '2026-09-07 09:30:15 ~ 2026-09-08 17:45:59',
     })
   ).toBeVisible()
+})
+
+it('shows four responsive statistic cards and marks unavailable MPM without inventing a value', async () => {
+  await renderMobileFilter(false)
+  const region = await screen.findByRole('region', { name: 'Usage statistics' })
+  expect(region).toHaveClass('grid-cols-2', 'lg:grid-cols-4')
+  for (const label of [
+    'Period Consumption',
+    'Current RPM',
+    'Current TPM',
+    'Current MPM',
+  ]) {
+    expect(within(region).getByText(label)).toBeVisible()
+  }
+  const mpm = within(region)
+    .getByText('Current MPM')
+    .closest('[data-slot=card]')
+  expect(mpm).not.toBeNull()
+  expect(within(mpm as HTMLElement).getByText('—')).toBeVisible()
+  expect(
+    within(mpm as HTMLElement).getByText('Temporarily unavailable')
+  ).toBeVisible()
+})
+
+it('keeps the desktop token filter visible and submits its draft only on Search', async () => {
+  const router = await renderMobileFilter(false)
+  const user = userEvent.setup()
+  const token = screen.getByRole('textbox', { name: 'Token Name' })
+  await user.type(token, 'production-key')
+  expect(router.state.location.search).not.toHaveProperty('token')
+  await user.click(screen.getByRole('button', { name: 'Search' }))
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({
+      token: 'production-key',
+      page: 1,
+      group: 'default',
+      type: ['2'],
+    })
+  )
+})
+
+it('opens additional desktop filters with an accessible Filter toggle and retains draft values when collapsed', async () => {
+  await renderMobileFilter(false)
+  const user = userEvent.setup()
+  const filter = screen.getByRole('button', { name: 'Filter' })
+  expect(filter).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByPlaceholderText('Request ID')).not.toBeInTheDocument()
+  filter.focus()
+  await user.keyboard('{Enter}')
+  expect(filter).toHaveAttribute('aria-expanded', 'true')
+  await user.type(screen.getByPlaceholderText('Request ID'), 'request-17')
+  await user.click(filter)
+  expect(screen.queryByPlaceholderText('Request ID')).not.toBeInTheDocument()
+  await user.click(filter)
+  expect(screen.getByPlaceholderText('Request ID')).toHaveValue('request-17')
+})
+
+it('refreshes applied desktop statistics while preserving unsubmitted filter drafts', async () => {
+  await renderMobileFilter(false)
+  const user = userEvent.setup()
+  await screen.findByText('$0')
+  const token = screen.getByRole('textbox', { name: 'Token Name' })
+  await user.type(token, 'draft-key')
+  vi.mocked(api.get).mockClear()
+  await user.click(screen.getByRole('button', { name: 'Refresh' }))
+  await waitFor(() =>
+    expect(api.get).toHaveBeenCalledWith(
+      expect.stringContaining('/api/log/self/stat?')
+    )
+  )
+  expect(token).toHaveValue('draft-key')
+  expect(vi.mocked(api.get).mock.calls.flat().join(' ')).not.toContain(
+    'draft-key'
+  )
+})
+
+it('masks the consumption card together with sensitive filter text while retaining rate metrics', async () => {
+  await renderMobileFilter(false)
+  const user = userEvent.setup()
+  await screen.findByText('$0')
+  await user.click(screen.getByRole('button', { name: 'Hide' }))
+  const region = screen.getByRole('region', { name: 'Usage statistics' })
+  expect(within(region).getByText('••••')).toBeVisible()
+  expect(within(region).getAllByText('0')).toHaveLength(2)
+  expect(screen.getByRole('textbox', { name: 'Token Name' })).toHaveClass(
+    '[-webkit-text-security:disc]'
+  )
+  await user.click(screen.getByRole('button', { name: 'Show' }))
+  expect(within(region).getByText('$0')).toBeVisible()
 })

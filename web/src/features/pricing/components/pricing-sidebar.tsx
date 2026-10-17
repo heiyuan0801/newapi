@@ -27,6 +27,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +61,7 @@ type FilterSectionProps = {
   value: string
   options: FilterOption[]
   onChange: (value: string) => void
+  horizontal?: boolean
 }
 
 export interface PricingSidebarProps {
@@ -75,6 +83,7 @@ export interface PricingSidebarProps {
   hasActiveFilters: boolean
   onClearFilters: () => void
   className?: string
+  layout?: 'sidebar' | 'horizontal'
 }
 
 function formatGroupRatio(ratio: number | undefined): string | undefined {
@@ -121,6 +130,68 @@ function FilterChip(props: {
 }
 
 function FilterSection(props: FilterSectionProps) {
+  const { t } = useTranslation()
+  if (props.horizontal) {
+    const selected = props.options.find(
+      (option) => option.value === props.value
+    )
+    const selectedLabel =
+      props.value === FILTER_ALL ? t('All') : selected?.label || props.value
+    return (
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger
+          aria-label={`${props.title}: ${selectedLabel}`}
+          render={
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='h-8 max-w-64 gap-1.5 px-2.5 text-sm'
+            />
+          }
+        >
+          <span className='shrink-0'>{props.title}</span>
+          <span className='text-muted-foreground truncate font-normal'>
+            {selectedLabel}
+          </span>
+          <ChevronDown
+            aria-hidden
+            className='text-muted-foreground size-3.5 shrink-0'
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align='start'
+          className='public-surface max-h-80 w-64'
+        >
+          <DropdownMenuRadioGroup
+            value={props.value}
+            onValueChange={(value) => props.onChange(value)}
+            aria-label={props.title}
+          >
+            {props.options.map((option) => (
+              <DropdownMenuRadioItem
+                key={option.value}
+                value={option.value}
+                closeOnClick
+                className='min-h-8 gap-2'
+              >
+                {option.icon && <span className='shrink-0'>{option.icon}</span>}
+                <span className='min-w-0 flex-1 truncate' title={option.label}>
+                  {option.label}
+                </span>
+                {(option.suffix || option.count != null) && (
+                  <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+                    {option.suffix ?? option.count}
+                  </span>
+                )}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
   return (
     <Collapsible
       defaultOpen
@@ -263,6 +334,63 @@ export const PricingSidebar = memo(function PricingSidebar(
         count: counts.endpoints.get(value) ?? 0,
       })),
   ]
+
+  if (props.layout === 'horizontal') {
+    return (
+      <div
+        role='group'
+        aria-label={t('Filter')}
+        className={cn('flex min-w-max items-center gap-1', props.className)}
+      >
+        <FilterSection
+          horizontal
+          title={t('Vendor')}
+          value={props.vendorFilter}
+          options={vendorOptions}
+          onChange={props.onVendorChange}
+        />
+        <FilterSection
+          horizontal
+          title={t('Groups')}
+          value={props.groupFilter}
+          options={groupOptions}
+          onChange={props.onGroupChange}
+        />
+        <FilterSection
+          horizontal
+          title={t('Model Tags')}
+          value={props.tagFilter}
+          options={tagOptions}
+          onChange={props.onTagChange}
+        />
+        <FilterSection
+          horizontal
+          title={t('Endpoint Type')}
+          value={props.endpointTypeFilter}
+          options={endpointOptions}
+          onChange={props.onEndpointTypeChange}
+        />
+        <FilterSection
+          horizontal
+          title={t('Pricing Type')}
+          value={props.quotaTypeFilter}
+          options={quotaOptions}
+          onChange={props.onQuotaTypeChange}
+        />
+        {props.hasActiveFilters && (
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-sm'
+            onClick={props.onClearFilters}
+            aria-label={t('Reset')}
+          >
+            <RotateCcw aria-hidden className='size-3.5' />
+          </Button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <aside className={cn('bg-card rounded-xl border p-3', props.className)}>

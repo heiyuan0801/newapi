@@ -16,14 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Copy, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
-import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 
 interface PromptDialogProps {
   prompt: string
@@ -39,7 +37,6 @@ export function PromptDialog({
   onOpenChange,
 }: PromptDialogProps) {
   const { t } = useTranslation()
-  const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
 
   return (
     <Dialog
@@ -47,7 +44,7 @@ export function PromptDialog({
       onOpenChange={onOpenChange}
       title={t('Prompt Details')}
       description={t('View the complete prompt and its English translation')}
-      contentClassName='sm:max-w-lg'
+      contentClassName='min-w-0 rounded-2xl sm:max-w-lg'
       contentHeight='auto'
       bodyClassName='space-y-4'
     >
@@ -57,20 +54,12 @@ export function PromptDialog({
           <div className='space-y-2'>
             <Label className='text-sm font-semibold'>{t('Prompt')}</Label>
             <div className='bg-muted/50 relative rounded-md border p-3'>
-              <Button
-                variant='ghost'
-                size='sm'
-                className='absolute top-2 right-2 h-8 w-8 p-0'
-                onClick={() => copyToClipboard(prompt)}
-                title={t('Copy to clipboard')}
-              >
-                {copiedText === prompt ? (
-                  <Check className='size-4 text-green-600' />
-                ) : (
-                  <Copy className='size-4' />
-                )}
-              </Button>
-              <p className='pr-10 text-sm leading-relaxed break-words whitespace-pre-wrap'>
+              <CopyButton
+                value={prompt}
+                className='absolute top-2 right-2 size-8'
+                iconClassName='size-4'
+              />
+              <p className='pr-10 text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap'>
                 {prompt || '-'}
               </p>
             </div>
@@ -83,20 +72,12 @@ export function PromptDialog({
                 {t('Prompt (EN)')}
               </Label>
               <div className='bg-muted/50 relative rounded-md border p-3'>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='absolute top-2 right-2 h-8 w-8 p-0'
-                  onClick={() => copyToClipboard(promptEn)}
-                  title={t('Copy to clipboard')}
-                >
-                  {copiedText === promptEn ? (
-                    <Check className='size-4 text-green-600' />
-                  ) : (
-                    <Copy className='size-4' />
-                  )}
-                </Button>
-                <p className='pr-10 text-sm leading-relaxed break-words whitespace-pre-wrap'>
+                <CopyButton
+                  value={promptEn}
+                  className='absolute top-2 right-2 size-8'
+                  iconClassName='size-4'
+                />
+                <p className='pr-10 text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap'>
                   {promptEn}
                 </p>
               </div>

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDown, Globe, Plus } from 'lucide-react'
+import { ChevronDown, Globe, MoreVertical, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
@@ -41,9 +41,8 @@ import { useStatus } from '@/hooks/use-status'
 
 import { useApiKeys } from './api-keys-provider'
 
-export function ApiKeysPrimaryButtons() {
+export function ApiKeysAddresses(props: { inline?: boolean }) {
   const { t } = useTranslation()
-  const { setOpen } = useApiKeys()
   const { status, loading } = useStatus()
   const { items } = useApiInfo()
   const serverAddress =
@@ -61,12 +60,34 @@ export function ApiKeysPrimaryButtons() {
       ]
 
   return (
-    <div className='flex flex-wrap gap-2'>
+    <div className='flex min-w-0 items-center gap-2'>
       <Popover>
-        <PopoverTrigger render={<Button variant='outline' size='sm' />}>
-          <Globe aria-hidden='true' />
-          {t('API Addresses')}
-          <ChevronDown aria-hidden='true' />
+        <PopoverTrigger
+          render={
+            <Button
+              variant='outline'
+              size='sm'
+              aria-label={t('API Addresses')}
+              className={
+                props.inline
+                  ? 'bg-muted/40 max-w-full min-w-0 font-mono font-normal'
+                  : undefined
+              }
+            />
+          }
+        >
+          {props.inline ? (
+            <>
+              <span className='min-w-0 truncate'>{addresses[0].url}</span>
+              <MoreVertical aria-hidden='true' />
+            </>
+          ) : (
+            <>
+              <Globe aria-hidden='true' />
+              {t('API Addresses')}
+              <ChevronDown aria-hidden='true' />
+            </>
+          )}
         </PopoverTrigger>
         <PopoverContent
           align='end'
@@ -112,8 +133,28 @@ export function ApiKeysPrimaryButtons() {
           )}
         </PopoverContent>
       </Popover>
+      {props.inline && (
+        <CopyButton
+          value={addresses[0].url}
+          variant='outline'
+          className='size-8 rounded-lg'
+          tooltip={t('Copy API URL')}
+          aria-label={`${t('Copy API URL')}: ${addresses[0].url}`}
+        />
+      )}
+    </div>
+  )
+}
+
+export function ApiKeysPrimaryButtons(props: { showAddresses?: boolean }) {
+  const { t } = useTranslation()
+  const { setOpen } = useApiKeys()
+
+  return (
+    <div className='flex flex-wrap gap-2'>
+      {props.showAddresses !== false && <ApiKeysAddresses />}
       <Button size='sm' onClick={() => setOpen('create')}>
-        <Plus className='h-4 w-4' />
+        <Plus className='size-4' aria-hidden='true' />
         {t('Create API Key')}
       </Button>
     </div>

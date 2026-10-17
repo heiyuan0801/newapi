@@ -30,10 +30,10 @@ import { getCurrencyDisplay } from '@/lib/currency'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import { API_KEY_STATUSES } from '../constants'
 import type { ApiKey } from '../types'
 import { ApiKeyGroupCell } from './api-key-group-cell'
 import { ApiKeyQuotaCell } from './api-key-quota-cell'
+import { ApiKeyStatusSwitch } from './api-key-status-switch'
 import {
   ApiKeyActivityCell,
   ApiKeyTimestampCell,
@@ -79,6 +79,13 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
   return useMemo<ColumnDef<ApiKey>[]>(
     () => [
       {
+        id: '_tokenSearch',
+        accessorFn: () => '',
+        enableSorting: false,
+        enableHiding: false,
+        filterFn: () => true,
+      },
+      {
         id: 'select',
         header: ({ table }) => (
           <Checkbox
@@ -113,40 +120,12 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         meta: { mobileTitle: true },
       },
       {
-        accessorKey: 'status',
-        header: t('Status'),
-        cell: ({ row }) => {
-          const statusConfig =
-            API_KEY_STATUSES[row.getValue('status') as number]
-          if (!statusConfig) return null
-          return (
-            <StatusBadge
-              label={t(statusConfig.label)}
-              variant={statusConfig.variant}
-              copyable={false}
-              className='-ml-1.5'
-            />
-          )
-        },
-        filterFn: (row, id, value) => value.includes(String(row.getValue(id))),
-        size: 120,
-        meta: { mobileBadge: true },
-      },
-      {
         id: 'key',
         accessorKey: 'key',
         header: t('API Key'),
         cell: ({ row }) => <ApiKeyCell apiKey={row.original} />,
         enableSorting: false,
-        size: 260,
-      },
-      {
-        id: 'quota',
-        accessorKey: 'remain_quota',
-        header: `${t('Quota')} (${quotaUnit})`,
-        cell: ({ row }) => <ApiKeyQuotaCell apiKey={row.original} now={now} />,
-        size: 260,
-        minSize: 260,
+        size: 200,
       },
       {
         accessorKey: 'group',
@@ -163,8 +142,18 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
             />
           )
         },
-        size: 220,
+        size: 160,
         meta: { mobileHidden: true },
+      },
+      {
+        id: 'quota',
+        accessorKey: 'remain_quota',
+        header: `${t('Used / Remaining')} (${quotaUnit})`,
+        cell: ({ row }) => (
+          <ApiKeyQuotaCell apiKey={row.original} now={now} variant='compact' />
+        ),
+        size: 180,
+        minSize: 180,
       },
       {
         id: 'model_limits',
@@ -182,6 +171,21 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         cell: ({ row }) => <IpRestrictionsCell apiKey={row.original} />,
         enableSorting: false,
         size: 160,
+        meta: { mobileHidden: true },
+      },
+      {
+        accessorKey: 'created_time',
+        header: t('Created'),
+        cell: ({ row }) => (
+          <ApiKeyTimestampCell
+            timestamp={row.original.created_time}
+            now={now}
+            format='absolute'
+            locale={locale}
+            justNowLabel={justNowLabel}
+          />
+        ),
+        size: 170,
         meta: { mobileHidden: true },
       },
       {
@@ -230,7 +234,15 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         id: 'actions',
         header: () => t('Actions'),
         cell: ({ row }) => <DataTableRowActions row={row} />,
-        meta: { pinned: 'right' as const },
+        size: 120,
+      },
+      {
+        accessorKey: 'status',
+        header: t('Status'),
+        cell: ({ row }) => <ApiKeyStatusSwitch apiKey={row.original} />,
+        filterFn: (row, id, value) => value.includes(String(row.getValue(id))),
+        size: 80,
+        meta: { mobileBadge: true },
       },
     ],
     [t, quotaUnit, now, groupRatios, shouldReduceMotion, locale, justNowLabel]

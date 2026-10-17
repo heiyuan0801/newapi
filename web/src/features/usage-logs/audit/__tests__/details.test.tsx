@@ -907,7 +907,7 @@ it('loads scope labels for a generated token when its details open', async () =>
     '/api/user/access_tokens/scopes',
     expect.anything()
   )
-  expect(within(dialog).getByText('个人资料')).toBeVisible()
+  expect(within(dialog).getByText(i18n.t('Profile'))).toBeVisible()
   expect(within(dialog).getByText('1 项权限不在当前权限目录中')).toBeVisible()
   expect(within(dialog).getByText('永不过期')).toBeVisible()
   expect(dialog).not.toHaveTextContent(/profile:|retired/)

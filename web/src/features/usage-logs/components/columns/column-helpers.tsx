@@ -24,6 +24,8 @@ import { useTranslation } from 'react-i18next'
 
 import { DataTableColumnHeader } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import {
   Tooltip,
   TooltipContent,
@@ -225,16 +227,18 @@ export function createFailReasonColumn<T>(config: {
 
       return (
         <>
-          <button
+          <Button
             type='button'
-            className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+            variant='ghost'
+            size='xs'
+            className='group max-w-[200px] min-w-0 justify-start px-1.5 text-left text-xs'
             onClick={() => setDialogOpen(true)}
             title={cellTitle}
           >
             <span className='truncate leading-snug text-red-600 group-hover:underline dark:text-red-400'>
               {failReason}
             </span>
-          </button>
+          </Button>
           <FailReasonDialog
             failReason={failReason}
             open={dialogOpen}
@@ -266,10 +270,24 @@ export function createProgressColumn<T>(config: {
       if (!progress) {
         return <span className='text-muted-foreground/60 text-xs'>-</span>
       }
+      const numericProgress = /^\d+(?:\.\d+)?%$/.test(progress)
+        ? Number.parseFloat(progress)
+        : null
+      if (numericProgress != null && numericProgress <= 100) {
+        return (
+          <div className='w-24 max-w-full space-y-1'>
+            <span className='font-mono text-xs tabular-nums'>{progress}</span>
+            <Progress value={numericProgress} aria-label={headerLabel} />
+          </div>
+        )
+      }
       return (
-        <span className='border-border/60 bg-muted/30 inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-xs'>
-          {progress}
-        </span>
+        <StatusBadge
+          label={progress}
+          variant='neutral'
+          copyable={false}
+          className='max-w-28 rounded-md border font-mono text-xs'
+        />
       )
     },
     meta: { label: headerLabel },

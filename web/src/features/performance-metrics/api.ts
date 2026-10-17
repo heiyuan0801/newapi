@@ -22,10 +22,15 @@ import type { PerformanceMetricsData, PerfSummaryAllData } from './types'
 
 export async function getPerfMetricsSummary(
   hours = 24,
-  recentModels?: string[]
+  recentModels?: string[],
+  includeGroups = false
 ): Promise<PerfSummaryAllData> {
   const res = await api.get<PerfSummaryAllData>('/api/perf-metrics/summary', {
-    params: { hours, recent_model: recentModels },
+    params: {
+      hours,
+      recent_model: recentModels,
+      ...(includeGroups ? { include_groups: true } : {}),
+    },
     paramsSerializer: { indexes: null },
   })
   return res.data
@@ -33,12 +38,14 @@ export async function getPerfMetricsSummary(
 
 export async function getPerfMetrics(
   modelName: string,
-  hours = 24
+  hours = 24,
+  group?: string
 ): Promise<PerformanceMetricsData> {
   const res = await api.get<PerformanceMetricsData>('/api/perf-metrics', {
     params: {
       model: modelName,
       hours,
+      ...(group ? { group } : {}),
     },
   })
   return res.data

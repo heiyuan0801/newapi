@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
 import { translateServerText } from '@/lib/server-error-message'
@@ -35,6 +36,7 @@ import type { TaskLog } from '../../types'
 import { TaskDetailsDialog } from '../dialogs/task-details-dialog'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { TaskArtifactsCell } from '../task-artifacts'
+import { TaskIdentifier } from '../task-identifier'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -52,10 +54,12 @@ function TaskDetailsCell(props: {
 
   return (
     <>
-      <div className='flex max-w-[220px] flex-col items-start gap-1'>
-        <button
+      <div className='flex max-w-[220px] min-w-0 flex-col items-start gap-1'>
+        <Button
           type='button'
-          className='text-foreground inline-flex items-center gap-1 text-xs font-medium hover:underline'
+          variant='outline'
+          size='xs'
+          className='rounded-lg'
           onClick={() => setDialogOpen(true)}
         >
           <HugeiconsIcon
@@ -65,7 +69,7 @@ function TaskDetailsCell(props: {
             aria-hidden='true'
           />
           {t('View details')}
-        </button>
+        </Button>
         {props.log.fail_reason ? (
           <span className='max-w-full truncate text-xs text-red-600 dark:text-red-400'>
             {translateServerText(t, props.log.fail_reason)}
@@ -205,18 +209,9 @@ export function useTaskLogsColumns(
         cell: ({ row }) => {
           const log = row.original
           const taskId = row.getValue('task_id') as string
-          if (!taskId) {
-            return <span className='text-muted-foreground/60 text-xs'>-</span>
-          }
           return (
-            <div className='flex max-w-[170px] flex-col gap-0.5'>
-              <StatusBadge
-                label={taskId}
-                copyText={taskId}
-                variant='neutral'
-                size='sm'
-                className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
-              />
+            <div className='flex max-w-52 min-w-0 flex-col gap-0.5'>
+              <TaskIdentifier value={taskId} />
               <span className='text-muted-foreground/60 truncate text-[11px]'>
                 {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
               </span>
@@ -224,6 +219,8 @@ export function useTaskLogsColumns(
           )
         },
         meta: { mobileTitle: true },
+        size: 220,
+        maxSize: 240,
       },
       createDurationColumn<TaskLog>({
         submitTimeKey: 'submit_time',
@@ -245,7 +242,7 @@ export function useTaskLogsColumns(
               variant={taskStatusMapper.getVariant(status)}
               size='sm'
               copyable={false}
-              className='-ml-1.5'
+              className='rounded-full border px-2 text-xs'
             />
           )
         },

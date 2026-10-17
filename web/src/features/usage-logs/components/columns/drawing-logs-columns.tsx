@@ -39,6 +39,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import { formatTimestampToDate } from '@/lib/format'
 
 import { MJ_TASK_TYPES } from '../../constants'
@@ -50,6 +51,7 @@ import {
 import type { MidjourneyLog } from '../../types'
 import { ImageDialog } from '../dialogs/image-dialog'
 import { PromptDialog } from '../dialogs/prompt-dialog'
+import { TaskIdentifier } from '../task-identifier'
 import {
   createDurationColumn,
   createChannelColumn,
@@ -91,7 +93,6 @@ export function useDrawingLogsColumns(
         accessorKey: 'submit_time',
         header: t('Submit Time'),
         cell: ({ row }) => {
-          const log = row.original
           const submitTime = row.getValue('submit_time') as number
 
           return (
@@ -99,12 +100,6 @@ export function useDrawingLogsColumns(
               <span className='truncate font-mono text-xs tabular-nums'>
                 {formatTimestampToDate(submitTime, 'milliseconds')}
               </span>
-              <StatusBadge
-                label={t(mjStatusMapper.getLabel(log.status))}
-                variant={mjStatusMapper.getVariant(log.status)}
-                size='sm'
-                copyable={false}
-              />
             </div>
           )
         },
@@ -130,7 +125,7 @@ export function useDrawingLogsColumns(
             icon={getDrawingTypeIcon(action)}
             size='sm'
             copyable={false}
-            className='-ml-1.5'
+            className='rounded-full border px-2 text-xs'
           />
         )
       },
@@ -140,25 +135,11 @@ export function useDrawingLogsColumns(
       accessorKey: 'mj_id',
       header: t('Task ID'),
       cell: ({ row }) => {
-        const mjId = row.getValue('mj_id') as string
-
-        if (!mjId) {
-          return <span className='text-muted-foreground/60 text-xs'>-</span>
-        }
-
-        return (
-          <div className='flex max-w-[160px] flex-col gap-0.5'>
-            <StatusBadge
-              label={mjId}
-              copyText={mjId}
-              variant='neutral'
-              size='sm'
-              className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
-            />
-          </div>
-        )
+        return <TaskIdentifier value={row.getValue('mj_id') as string} />
       },
       meta: { mobileTitle: true },
+      size: 220,
+      maxSize: 240,
     })
 
     columns.push(
@@ -182,7 +163,7 @@ export function useDrawingLogsColumns(
               variant={mjSubmitResultMapper.getVariant(String(code))}
               size='sm'
               copyable={false}
-              className='-ml-1.5'
+              className='rounded-full border px-2 text-xs'
             />
           )
         },
@@ -190,6 +171,19 @@ export function useDrawingLogsColumns(
     }
 
     columns.push(
+      {
+        accessorKey: 'status',
+        header: t('Status'),
+        cell: ({ row }) => (
+          <StatusBadge
+            label={t(mjStatusMapper.getLabel(row.original.status))}
+            variant={mjStatusMapper.getVariant(row.original.status)}
+            size='sm'
+            copyable={false}
+            className='rounded-full border px-2 text-xs'
+          />
+        ),
+      },
       createProgressColumn<MidjourneyLog>({ headerLabel: t('Progress') }),
       {
         accessorKey: 'image_url',
@@ -205,16 +199,18 @@ export function useDrawingLogsColumns(
 
           return (
             <>
-              <button
+              <Button
                 type='button'
-                className='group text-left text-xs'
+                variant='outline'
+                size='xs'
+                className='rounded-lg'
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view image')}
               >
                 <span className='text-foreground truncate leading-snug group-hover:underline'>
                   {t('View')}
                 </span>
-              </button>
+              </Button>
               <ImageDialog
                 imageUrl={imageUrl}
                 taskId={log.mj_id}
@@ -239,16 +235,18 @@ export function useDrawingLogsColumns(
 
           return (
             <>
-              <button
+              <Button
                 type='button'
-                className='group flex max-w-[220px] items-center text-left text-xs'
+                variant='ghost'
+                size='xs'
+                className='group max-w-[220px] min-w-0 justify-start px-1.5 text-left text-xs'
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view full prompt')}
               >
                 <span className='text-muted-foreground truncate leading-snug group-hover:underline'>
                   {prompt}
                 </span>
-              </button>
+              </Button>
               <PromptDialog
                 prompt={prompt}
                 promptEn={log.prompt_en}

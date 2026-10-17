@@ -263,7 +263,6 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const hasExpandedFilters =
-    !!filters.token ||
     !!filters.username ||
     !!filters.channel ||
     !!filters.requestId ||
@@ -271,10 +270,13 @@ export function CommonLogsFilterBar<TData>(
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
+    !!filters.token ||
+    !!filters.model ||
+    !!filters.group ||
+    hasTypeFilter ||
+    hasExpandedFilters
 
   const expandedFilterCount = [
-    filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
     filters.requestId,
@@ -322,6 +324,7 @@ export function CommonLogsFilterBar<TData>(
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
+        splitTrigger={!isMobile}
         start={filters.startTime}
         end={filters.endTime}
         onChange={({ start, end }) => {
@@ -337,6 +340,7 @@ export function CommonLogsFilterBar<TData>(
   const modelFilter = (
     <LogsFilterField>
       <LogsFilterInput
+        aria-label={t('Model Name')}
         placeholder={t('Model Name')}
         value={filters.model || ''}
         onChange={(e) => handleChange('model', e.target.value)}
@@ -433,17 +437,20 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
+  const tokenFilter = (
+    <LogsFilterField>
+      <LogsFilterInput
+        aria-label={t('Token Name')}
+        placeholder={t('Token Name')}
+        className={sensitiveInputClass}
+        value={filters.token || ''}
+        onChange={(e) => handleChange('token', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
   const advancedFilters = (
     <>
-      <LogsFilterField>
-        <LogsFilterInput
-          placeholder={t('Token Name')}
-          className={sensitiveInputClass}
-          value={filters.token || ''}
-          onChange={(e) => handleChange('token', e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-      </LogsFilterField>
       {isAdmin && (
         <LogsFilterField>
           <LogsFilterInput
@@ -488,21 +495,28 @@ export function CommonLogsFilterBar<TData>(
     <LogsFilterToolbar
       table={props.table}
       compactMobile
+      compactDesktop
+      trailingFilters={typeFilter}
+      onRefresh={() => {
+        void queryClient.invalidateQueries({ queryKey: ['logs'] })
+        void queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
+      }}
       stats={statsBar}
       actionStart={sensitiveToggle}
       actionEnd={<ExportLogsDialog />}
       primaryFilters={
         <>
           {dateRangeFilter}
+          {tokenFilter}
           {modelFilter}
           {groupFilter}
-          {typeFilter}
         </>
       }
       advancedFilters={advancedFilters}
       mobilePinnedFilters={dateRangeFilter}
       mobileFilters={
         <>
+          {tokenFilter}
           {modelFilter}
           {groupFilter}
           {typeFilter}
@@ -510,8 +524,9 @@ export function CommonLogsFilterBar<TData>(
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
+        [filters.token, filters.model, filters.group, hasTypeFilter].filter(
+          Boolean
+        ).length + expandedFilterCount
       }
       hasAdvancedActiveFilters={hasExpandedFilters}
       advancedFilterCount={expandedFilterCount}

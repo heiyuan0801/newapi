@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
-import { ChevronDown, Loader2 } from 'lucide-react'
+import {
+  ChevronDown,
+  Funnel,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Search,
+} from 'lucide-react'
 import { useState, type ComponentProps, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -45,9 +52,14 @@ interface LogsFilterToolbarProps<TData> {
   primaryFilters: ReactNode
   advancedFilters?: ReactNode
   compactMobile?: boolean
+  compactDesktop?: boolean
+  trailingFilters?: ReactNode
+  onRefresh?: () => void
   mobilePinnedFilters?: ReactNode
   mobileFilters?: ReactNode
   mobileFilterCount?: number
+  showMobileFilter?: boolean
+  searchVariant?: ComponentProps<typeof Button>['variant']
   stats?: ReactNode
   actionStart?: ReactNode
   actionEnd?: ReactNode
@@ -148,31 +160,33 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
           actions={
             <>
               {props.actionStart}
-              <DrawerTrigger asChild>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  aria-label={t('Filter')}
-                  className={cn(
-                    'text-muted-foreground hover:text-foreground gap-1 px-2',
-                    props.compactMobile && 'min-h-9 gap-1.5',
-                    activeMobileFilterCount > 0 &&
-                      'text-primary hover:text-primary'
-                  )}
-                >
-                  {t('Filter')}
-                  {activeMobileFilterCount > 0 && (
-                    <Badge
-                      className={cn(
-                        !props.compactMobile &&
-                          'ml-0.5 size-5 justify-center p-0 text-[10px]'
-                      )}
-                    >
-                      {activeMobileFilterCount}
-                    </Badge>
-                  )}
-                </Button>
-              </DrawerTrigger>
+              {props.showMobileFilter !== false && (
+                <DrawerTrigger asChild>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    aria-label={t('Filter')}
+                    className={cn(
+                      'text-muted-foreground hover:text-foreground gap-1 px-2',
+                      props.compactMobile && 'min-h-9 gap-1.5',
+                      activeMobileFilterCount > 0 &&
+                        'text-primary hover:text-primary'
+                    )}
+                  >
+                    {t('Filter')}
+                    {activeMobileFilterCount > 0 && (
+                      <Badge
+                        className={cn(
+                          !props.compactMobile &&
+                            'ml-0.5 size-5 justify-center p-0 text-[10px]'
+                        )}
+                      >
+                        {activeMobileFilterCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </DrawerTrigger>
+              )}
               <Button
                 type='button'
                 onClick={props.onSearch}
@@ -182,6 +196,32 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
                 {props.searchLoading && <Loader2 className='animate-spin' />}
                 {t('Search')}
               </Button>
+              {props.onRefresh && (
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='icon'
+                  onClick={props.onRefresh}
+                  disabled={props.searchLoading}
+                  aria-label={t('Refresh')}
+                >
+                  <RefreshCw
+                    className={cn(props.searchLoading && 'animate-spin')}
+                  />
+                </Button>
+              )}
+              {props.showMobileFilter === false && (
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='icon'
+                  onClick={props.onReset}
+                  disabled={!props.hasActiveFilters}
+                  aria-label={t('Reset')}
+                >
+                  <RotateCcw />
+                </Button>
+              )}
               {props.actionEnd}
               <DataTableViewOptions table={props.table} />
             </>
@@ -239,6 +279,84 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
           </div>
         </DrawerContent>
       </Drawer>
+    )
+  }
+
+  if (props.compactDesktop) {
+    return (
+      <div className={cn('flex min-w-0 flex-col gap-4', props.className)}>
+        {props.stats}
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
+          <div className='flex min-w-0 flex-wrap items-center gap-2 [&>div]:w-32 [&>div]:shrink-0 [&>div:first-child]:w-[21rem]'>
+            {props.primaryFilters}
+          </div>
+          <Button
+            type='button'
+            variant={props.searchVariant ?? 'outline'}
+            onClick={props.onSearch}
+            disabled={props.searchLoading}
+            aria-busy={props.searchLoading}
+          >
+            {props.searchLoading ? (
+              <Loader2 className='animate-spin' />
+            ) : (
+              <Search />
+            )}
+            {t('Search')}
+          </Button>
+          <div className='ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 [&>div:first-child]:w-36'>
+            {props.trailingFilters}
+            {props.actionEnd}
+            {props.onRefresh && (
+              <Button
+                type='button'
+                variant='outline'
+                size='icon'
+                onClick={props.onRefresh}
+                disabled={props.searchLoading}
+                aria-label={t('Refresh')}
+              >
+                <RefreshCw
+                  className={cn(props.searchLoading && 'animate-spin')}
+                />
+              </Button>
+            )}
+            {hasAdvancedFilters && (
+              <Button
+                type='button'
+                variant='outline'
+                size='icon'
+                aria-label={t('Filter')}
+                aria-expanded={advancedOpen}
+                onClick={() => setAdvancedOpen((open) => !open)}
+                className={cn(props.hasAdvancedActiveFilters && 'text-primary')}
+              >
+                <Funnel />
+                {activeAdvancedCount > 0 && (
+                  <span className='sr-only'>{activeAdvancedCount}</span>
+                )}
+              </Button>
+            )}
+            <Button
+              type='button'
+              variant='outline'
+              size='icon'
+              onClick={props.onReset}
+              disabled={!props.hasActiveFilters}
+              aria-label={t('Reset')}
+            >
+              <RotateCcw />
+            </Button>
+            {props.actionStart}
+            <DataTableViewOptions table={props.table} />
+          </div>
+        </div>
+        {advancedOpen && props.advancedFilters && (
+          <div className='bg-card grid grid-cols-1 gap-2 rounded-[14px] border p-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]'>
+            {props.advancedFilters}
+          </div>
+        )}
+      </div>
     )
   }
 

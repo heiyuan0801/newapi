@@ -21,6 +21,7 @@ import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
@@ -112,7 +113,7 @@ export function AppHeader({
   const notifications = useNotifications()
 
   return (
-    <Header>
+    <Header showSidebarTrigger={false}>
       <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1'>
         <SystemBrand variant='inline' />
         <SystemUpdateAction presentation='version' />
@@ -122,15 +123,16 @@ export function AppHeader({
         <div className='ms-2 flex items-center'>{leftContent}</div>
       ) : null}
 
+      {showTopNav && rightContent == null && (
+        <div className='hidden min-w-0 items-center lg:flex'>
+          <TopNav links={links} />
+        </div>
+      )}
+
       {rightContent ?? (
-        <div className='ms-auto flex shrink-0 items-center gap-1 sm:gap-2'>
-          {showTopNav && (
-            <div className='me-1 hidden lg:block'>
-              <TopNav links={links} />
-            </div>
-          )}
+        <div className='ms-auto flex flex-1 items-center justify-end gap-1 sm:gap-2'>
           {showSearch && (
-            <Search className='w-8 flex-none [&>span]:hidden sm:[&>span]:inline' />
+            <Search className='w-8 flex-none border-0 bg-transparent px-0 sm:w-8 sm:pe-0 lg:w-8 xl:w-8 [&>kbd]:hidden [&>span]:hidden' />
           )}
           {showNotifications && (
             <NotificationPopover
@@ -145,6 +147,7 @@ export function AppHeader({
             />
           )}
           <LanguageSwitcher />
+          <ThemeSwitch />
           {showConfigDrawer && <ConfigDrawer />}
           {showProfileDropdown && <ProfileDropdown />}
         </div>

@@ -25,11 +25,6 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import {
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from '@tanstack/react-table'
-import {
   act,
   cleanup,
   render,
@@ -45,6 +40,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
+import { getCurrencyDisplay } from '@/lib/currency'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -52,7 +48,6 @@ import {
 
 import { apiKeySchema, type ApiKey } from '../../types'
 import { ApiKeyQuotaCell } from '../api-key-quota-cell'
-import { useApiKeysColumns } from '../api-keys-columns'
 import { ApiKeysProvider } from '../api-keys-provider'
 import { ApiKeysTable } from '../api-keys-table'
 
@@ -80,40 +75,21 @@ await i18n.init({
 const clients: QueryClient[] = []
 
 function QuotaTable(props: { apiKey: ApiKey }) {
-  const columns = useApiKeysColumns(now).filter(
-    (column) => column.id === 'quota'
-  )
-  const table = useReactTable({
-    columns,
-    data: [props.apiKey],
-    getCoreRowModel: getCoreRowModel(),
-  })
+  const { meta } = getCurrencyDisplay()
+  const symbol = meta.kind === 'tokens' ? 'Tokens' : meta.symbol
   return (
     <table>
       <thead>
-        {table.getHeaderGroups().map((group) => (
-          <tr key={group.id}>
-            {group.headers.map((header) => (
-              <th key={header.id}>
-                {flexRender(
-                  header.column.columnDef.header,
-                  header.getContext()
-                )}
-              </th>
-            ))}
-          </tr>
-        ))}
+        <tr>
+          <th>{`Quota (${symbol})`}</th>
+        </tr>
       </thead>
       <tbody>
-        {table.getRowModel().rows.map((row) => (
-          <tr key={row.id}>
-            {row.getVisibleCells().map((cell) => (
-              <td key={cell.id}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </td>
-            ))}
-          </tr>
-        ))}
+        <tr>
+          <td>
+            <ApiKeyQuotaCell apiKey={props.apiKey} now={now} />
+          </td>
+        </tr>
       </tbody>
     </table>
   )
@@ -303,12 +279,22 @@ function KeysPage() {
   )
 }
 
-async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
+async function renderKeysPage(
+  status = 1,
+  overrides: Partial<ApiKey> = {},
+  additionalKeys: ApiKey[] = []
+) {
   let currentKey = { ...key, status, ...overrides }
   vi.mocked(api.get).mockImplementation(async (url) => {
     if (url.startsWith('/api/token/')) {
       return {
-        data: { success: true, data: { items: [currentKey], total: 1 } },
+        data: {
+          success: true,
+          data: {
+            items: [currentKey, ...additionalKeys],
+            total: 1 + additionalKeys.length,
+          },
+        },
       }
     }
     return { data: { success: true, data: { default: { ratio: 1 } } } }
@@ -349,23 +335,36 @@ async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
   return { post, put }
 }
 
-it('combines creation and last use while keeping expiry, models and IP restrictions separate', async () => {
+it('shows compact API key columns with used quota before remaining and keeps extra information in the filter panel', async () => {
   await renderKeysPage()
-  for (const name of ['Name', 'API Key', 'Group', 'Models', 'IP Restriction']) {
-    expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
-  }
-  expect(screen.getByRole('columnheader', { name: 'Time' })).toBeInTheDocument()
   expect(
-    screen.getByRole('columnheader', { name: 'Expires' })
-  ).toBeInTheDocument()
-  const timeCell = screen.getByRole('cell', { name: /Created.*Last Used/ })
-  expect(within(timeCell).getByText('Last Used')).toBeInTheDocument()
-  const quotaHeader = screen.getByRole('columnheader', { name: 'Quota ($)' })
-  const quotaTrigger = screen.getByRole('button', {
+    screen.getAllByRole('columnheader').map((header) => header.textContent)
+  ).toEqual([
+    '',
+    'Name',
+    'API Key',
+    'Group',
+    'Used / Remaining ($)',
+    'Created',
+    'Expires',
+    'Actions',
+    'Status',
+  ])
+  const quota = screen.getByRole('button', {
     name: /Remaining 80; Remaining percentage 40%; Used amount 120/,
   })
-  expect(quotaHeader).not.toHaveClass('pr-8')
-  expect(quotaTrigger.closest('td')).not.toHaveClass('pr-8')
+  expect(quota).toHaveTextContent('$120$80')
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Filters' }))
+  await userEvent.click(screen.getByRole('button', { name: 'View' }))
+  await userEvent.click(
+    screen.getByRole('menuitemcheckbox', { name: 'Models' })
+  )
+  await userEvent.keyboard('{Escape}')
+  await userEvent.keyboard('{Escape}')
+  expect(
+    screen.getByRole('columnheader', { name: 'Models' })
+  ).toBeInTheDocument()
 })
 
 it('restores dates hidden by the old default and preserves unrelated column preferences', async () => {
@@ -389,23 +388,28 @@ it('restores dates hidden by the old default and preserves unrelated column pref
 })
 
 it.each([
-  [1, 'Disable', 2, 'Disabled'],
-  [2, 'Enable', 1, 'Enabled'],
+  [1, 'Disable', 2, false],
+  [2, 'Enable', 1, true],
 ])(
-  'keeps status %s toggling at its original row button without fetching a full key',
-  async (status, action, nextStatus, nextLabel) => {
+  'keeps status %s toggling from the status switch without fetching a full key',
+  async (status, action, nextStatus, checked) => {
     const { post, put } = await renderKeysPage(status)
     const user = userEvent.setup()
-    const button = screen.getByRole('button', { name: action })
+    const button = screen.getByRole('switch', { name: action })
     act(() => button.focus())
-    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
     await waitFor(() =>
       expect(put).toHaveBeenCalledWith('/api/token/?status_only=true', {
         id: 7,
         status: nextStatus,
       })
     )
-    await screen.findByText(nextLabel)
+    await waitFor(() =>
+      expect(screen.getByRole('switch')).toHaveAttribute(
+        'aria-checked',
+        String(checked)
+      )
+    )
     expect(post).not.toHaveBeenCalled()
   }
 )
@@ -413,11 +417,63 @@ it.each([
 it('keeps expired status when the server refuses reactivation', async () => {
   const { put, post } = await renderKeysPage(3)
   put.mockResolvedValue({ data: { success: false, message: 'Token expired' } })
-  await userEvent.click(screen.getByRole('button', { name: 'Enable' }))
+  await userEvent.click(screen.getByRole('switch', { name: 'Enable' }))
   await screen.findByText('Token expired')
-  expect(screen.getByText('Expired')).toBeInTheDocument()
-  expect(screen.queryByText('Enabled')).not.toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: 'Enable' })).toHaveAttribute(
+    'aria-checked',
+    'false'
+  )
   expect(post).not.toHaveBeenCalled()
+})
+
+it('sorts the current page by name and restores server order when default sorting is selected', async () => {
+  await renderKeysPage(1, {}, [{ ...key, id: 8, name: 'alpha' }])
+  const names = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => within(row).getAllByRole('cell')[1].textContent)
+  expect(names()).toEqual(['production', 'alpha'])
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('combobox', { name: 'Sort API keys' }))
+  await user.click(screen.getByRole('option', { name: 'Name on this page' }))
+  expect(names()).toEqual(['alpha', 'production'])
+  await user.click(screen.getByRole('combobox', { name: 'Sort API keys' }))
+  await user.click(screen.getByRole('option', { name: 'Default order' }))
+  expect(names()).toEqual(['production', 'alpha'])
+})
+
+it('submits name and API key search together and keeps keys masked until explicitly copied', async () => {
+  const { post } = await renderKeysPage()
+  const get = vi.mocked(api.get)
+  get.mockClear()
+  const user = userEvent.setup()
+  await user.type(
+    screen.getByRole('textbox', { name: 'Filter by name...' }),
+    'production'
+  )
+  await user.type(
+    screen.getByRole('textbox', { name: 'Filter by API key...' }),
+    'test-fragment'
+  )
+  expect(get).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: /^Search$/ }))
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith(
+      '/api/token/search?keyword=production&token=test-fragment&p=1&size=20'
+    )
+  )
+  expect(screen.getByText('sk-demo********1234')).toBeInTheDocument()
+  expect(post).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Reset' }))
+  await waitFor(() =>
+    expect(
+      screen.getByRole('textbox', { name: 'Filter by name...' })
+    ).toHaveValue('')
+  )
+  expect(
+    screen.getByRole('textbox', { name: 'Filter by API key...' })
+  ).toHaveValue('')
 })
 
 it.each([true, false])(

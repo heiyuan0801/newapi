@@ -16,175 +16,165 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { CalendarDays, Layers3, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge } from '@/components/status-badge'
+import { CopyButton } from '@/components/copy-button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Card, CardContent } from '@/components/ui/card'
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toIntlLocale } from '@/i18n/languages'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatCompactNumber, formatQuota } from '@/lib/format'
+import {
+  formatNumber,
+  formatQuota,
+  formatTimestampRelative,
+} from '@/lib/format'
 import { getRoleLabel } from '@/lib/roles'
 
 import { getDisplayName } from '../lib'
 import type { UserProfile } from '../types'
-
-// ============================================================================
-// Profile Header Component
-// ============================================================================
 
 interface ProfileHeaderProps {
   profile: UserProfile | null
   loading: boolean
 }
 
-export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
-  const { t } = useTranslation()
+export function ProfileHeader(props: ProfileHeaderProps) {
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
-  if (loading) {
+  if (props.loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-        <CardContent className='p-4 sm:p-5'>
-          <div className='flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left'>
-            <Skeleton className='h-16 w-16 rounded-2xl' />
-            <div className='space-y-3'>
-              <div className='flex flex-col items-center gap-2 sm:flex-row sm:justify-start'>
-                <Skeleton className='h-8 w-48' />
-                <Skeleton className='h-5 w-16' />
-              </div>
-              <div className='flex flex-col items-center gap-1 sm:flex-row sm:justify-start sm:gap-4'>
-                <Skeleton className='h-4 w-24' />
-                <Skeleton className='h-4 w-40' />
-                <Skeleton className='h-4 w-20' />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-        <div className='border-t'>
-          <div className='divide-border/60 grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
-            {['balance', 'usage', 'requests'].map((key) => (
-              <div key={key} className='px-4 py-3.5 sm:px-5 sm:py-4'>
-                <Skeleton className='h-3.5 w-20' />
-                <Skeleton className='mt-2 h-7 w-28' />
-                <Skeleton className='mt-1.5 h-3.5 w-24' />
-              </div>
-            ))}
+      <section
+        role='status'
+        aria-label={t('Loading...')}
+        className='overflow-hidden rounded-2xl'
+      >
+        <Skeleton className='h-[90px] w-full rounded-none' />
+        <div className='flex items-end gap-4 px-6 pb-5'>
+          <Skeleton className='-mt-8 size-24 rounded-full' />
+          <div className='space-y-2 py-2'>
+            <Skeleton className='h-6 w-40' />
+            <Skeleton className='h-5 w-48' />
           </div>
         </div>
-      </Card>
+      </section>
     )
   }
 
+  const profile = props.profile
   if (!profile) return null
 
   const displayName = getDisplayName(profile)
   const avatarName = profile.username || displayName
-  const avatarFallback = getUserAvatarFallback(avatarName)
-  const avatarFallbackStyle = getUserAvatarStyle(avatarName)
-  const roleLabel = getRoleLabel(profile.role)
-  const stats: {
-    label: string
-    value: string
-    description: string
-    icon: typeof WalletCards
-    tone: IconBadgeTone
-  }[] = [
-    {
-      label: t('Current Balance'),
-      value: formatQuota(profile.quota),
-      description: t('Remaining quota'),
-      icon: WalletCards,
-      tone: 'success',
-    },
-    {
-      label: t('Total Usage'),
-      value: formatQuota(profile.used_quota),
-      description: t('Total consumed quota'),
-      icon: BarChart3,
-      tone: 'info',
-    },
+  const stats = [
+    { label: t('Account Balance'), value: formatQuota(profile.quota) },
+    { label: t('Total Usage'), value: formatQuota(profile.used_quota) },
     {
       label: t('API Requests'),
-      value: formatCompactNumber(profile.request_count),
-      description: t('Total requests made'),
-      icon: Activity,
-      tone: 'chart-4',
+      value: formatNumber(profile.request_count, locale),
     },
   ]
 
   return (
-    <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-      <CardContent className='p-3 sm:p-5'>
-        <div className='flex items-center gap-3 text-left sm:gap-4'>
-          <Avatar className='ring-background h-12 w-12 rounded-xl text-sm ring-2 sm:h-16 sm:w-16 sm:rounded-2xl sm:text-lg sm:ring-4'>
-            <AvatarFallback
-              className='rounded-xl font-semibold text-white sm:rounded-2xl'
-              style={avatarFallbackStyle}
-            >
-              {avatarFallback}
-            </AvatarFallback>
-          </Avatar>
-
-          <div className='min-w-0 flex-1 space-y-1.5 sm:space-y-3'>
-            <div className='flex min-w-0 items-center gap-2'>
-              <h1 className='truncate text-xl font-semibold tracking-tight sm:text-2xl'>
-                {displayName}
-              </h1>
-              <StatusBadge
-                label={roleLabel}
-                variant='neutral'
-                copyable={false}
-              />
-              <StatusBadge
-                label={`${t('User ID')} ${profile.id}`}
-                variant='info'
-                copyText={String(profile.id)}
-              />
-            </div>
-
-            <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:gap-x-4 sm:text-sm'>
-              <span className='truncate'>@{profile.username}</span>
-              {profile.email && (
-                <>
-                  <span>•</span>
-                  <span className='truncate'>{profile.email}</span>
-                </>
-              )}
-              {profile.group && (
-                <>
-                  <span>•</span>
-                  <span className='truncate'>{profile.group}</span>
-                </>
-              )}
+    <section
+      aria-label={t('Profile overview')}
+      className='overflow-hidden rounded-t-[14px]'
+    >
+      <div
+        aria-hidden='true'
+        className='h-[90px] bg-linear-to-r from-[#c6edf4] via-[#e5d7ff] to-[#dcf1ff] dark:from-slate-700 dark:via-violet-950 dark:to-slate-800'
+      />
+      <div className='px-4 sm:px-6'>
+        <div className='flex flex-col gap-4 pb-5 sm:flex-row sm:items-end sm:justify-between'>
+          <div className='flex min-w-0 items-start gap-4'>
+            <Avatar className='ring-background -mt-8 size-20 shrink-0 rounded-full text-2xl ring-4 sm:size-28 sm:text-3xl'>
+              <AvatarFallback
+                className='rounded-full text-3xl font-semibold text-white sm:text-4xl'
+                style={getUserAvatarStyle(avatarName)}
+              >
+                {getUserAvatarFallback(avatarName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className='min-w-0 space-y-2 pt-4'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <h2 className='max-w-full truncate text-xl font-semibold tracking-tight'>
+                  {displayName}
+                </h2>
+                <Badge
+                  variant='secondary'
+                  className='gap-1 rounded-full px-2 py-0.5 text-[11px] font-normal'
+                >
+                  <ShieldCheck className='size-3' aria-hidden='true' />
+                  {getRoleLabel(profile.role)}
+                </Badge>
+                {profile.group && (
+                  <Badge
+                    variant='outline'
+                    className='gap-1 rounded-full px-2 py-0.5 text-[11px] font-normal'
+                  >
+                    <Layers3 className='size-3' aria-hidden='true' />
+                    {profile.group}
+                  </Badge>
+                )}
+              </div>
+              <div className='flex flex-wrap items-center gap-2'>
+                <CopyButton
+                  value={profile.username}
+                  size='sm'
+                  variant='outline'
+                  aria-label={t('Copy username')}
+                  className='h-7 max-w-full gap-1.5 rounded-full px-2 text-xs font-normal shadow-none'
+                  iconClassName='size-3'
+                >
+                  <span className='truncate font-mono'>{profile.username}</span>
+                </CopyButton>
+                <CopyButton
+                  value={String(profile.id)}
+                  size='sm'
+                  variant='outline'
+                  aria-label={t('Copy user ID')}
+                  className='h-7 gap-1.5 rounded-full px-2 text-xs font-normal shadow-none'
+                  iconClassName='size-3'
+                >
+                  <span className='bg-foreground text-background rounded-sm px-1 text-[10px] font-semibold'>
+                    ID
+                  </span>
+                  {profile.id}
+                </CopyButton>
+              </div>
             </div>
           </div>
+          <dl
+            aria-label={t('Account statistics')}
+            className='grid shrink-0 grid-cols-3 divide-x self-start overflow-hidden rounded-[14px] border sm:self-end'
+          >
+            {stats.map((stat) => (
+              <div
+                key={stat.label}
+                className='min-w-20 px-3 py-2 text-center sm:px-4'
+              >
+                <dd className='text-sm font-semibold tabular-nums'>
+                  {stat.value}
+                </dd>
+                <dt className='text-muted-foreground mt-0.5 text-[11px]'>
+                  {stat.label}
+                </dt>
+              </div>
+            ))}
+          </dl>
         </div>
-      </CardContent>
-      <div className='border-t'>
-        <div className='divide-border/60 grid grid-cols-3 divide-x'>
-          {stats.map((item) => (
-            <div key={item.label} className='min-w-0 px-3 py-3 sm:px-5 sm:py-4'>
-              <div className='flex items-center gap-2'>
-                <IconBadge tone={item.tone} size='stat'>
-                  <item.icon />
-                </IconBadge>
-                <div className='text-muted-foreground truncate text-xs font-medium tracking-wider uppercase'>
-                  {item.label}
-                </div>
-              </div>
-
-              <div className='text-foreground mt-1.5 truncate font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
-                {item.value}
-              </div>
-              <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-                {item.description}
-              </div>
-            </div>
-          ))}
-        </div>
+        {profile.created_time > 0 && (
+          <div className='text-muted-foreground flex flex-wrap items-center gap-1.5 border-t py-4 text-xs'>
+            <CalendarDays className='size-3.5' aria-hidden='true' />
+            <span>{t('Joined')}</span>
+            <span>
+              {formatTimestampRelative(profile.created_time, 'seconds', locale)}
+            </span>
+          </div>
+        )}
       </div>
-    </Card>
+    </section>
   )
 }

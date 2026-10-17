@@ -75,11 +75,22 @@ type ModelSummary struct {
 	RequestCount        int64              `json:"-"`
 }
 
+// ModelGroupSummary contains only sampled metrics for one model/group pair.
+type ModelGroupSummary struct {
+	ModelName           string             `json:"model_name"`
+	Group               string             `json:"group"`
+	AvgLatencyMs        int64              `json:"avg_latency_ms"`
+	SuccessRate         float64            `json:"success_rate"`
+	AvgTps              float64            `json:"avg_tps"`
+	RecentSuccessSeries []SuccessRatePoint `json:"recent_success_series,omitempty"`
+}
+
 type SummaryAllResult struct {
-	Summary     *Summary       `json:"summary"`
-	WindowStart int64          `json:"window_start"`
-	WindowEnd   int64          `json:"window_end"`
-	Models      []ModelSummary `json:"models"`
+	Summary     *Summary            `json:"summary"`
+	WindowStart int64               `json:"window_start"`
+	WindowEnd   int64               `json:"window_end"`
+	Models      []ModelSummary      `json:"models"`
+	GroupModels []ModelGroupSummary `json:"group_models,omitempty"`
 	// RecentSuccessSeries contains up to 24 nonempty hours from the last 7 days,
 	// including requested models with no traffic in the summary window.
 	RecentSuccessSeries map[string][]SuccessRatePoint `json:"recent_success_series,omitempty"`

@@ -69,6 +69,7 @@ import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
 import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
+import { UsagePanel } from './usage-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
   'dashboard_overview_setup_guide_expanded'
@@ -614,8 +615,7 @@ export function OverviewDashboard() {
   const setupStatusReady = apiKeysQuery.isFetched && Boolean(user)
   const setupGuideExpanded =
     manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
-  const showLeftContentPanels =
-    isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
+  const showLeftContentPanels = isAdmin || showApiInfoPanel || showFAQPanel
   const showContentPanels = showLeftContentPanels || showUptimePanel
 
   const handleSetupGuideToggle = () => {
@@ -629,7 +629,24 @@ export function OverviewDashboard() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t('Overview')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        <span className='flex flex-wrap items-center gap-2'>
+          <span className='mr-1' aria-hidden='true'>
+            👋
+          </span>
+          <span className='min-w-0 break-all'>
+            {t('Welcome back, {{name}}', {
+              name: user?.display_name || user?.username || '',
+            })}
+          </span>
+          <span className='text-muted-foreground rounded-md border px-2 py-1 text-[11px] font-normal'>
+            {user?.username}
+          </span>
+          <span className='text-muted-foreground rounded-md border px-2 py-1 text-[11px] font-normal'>
+            ID {user?.id}
+          </span>
+        </span>
+      </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         {setupStatusReady && setupComplete && (
           <Button
@@ -646,7 +663,18 @@ export function OverviewDashboard() {
         )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='flex flex-col gap-4'>
+        <div className='flex flex-col gap-5'>
+          <SummaryCards />
+          <div
+            className={cn(
+              'grid min-w-0 grid-cols-1 items-stretch gap-4',
+              showAnnouncementsPanel &&
+                'xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]'
+            )}
+          >
+            <UsagePanel />
+            {showAnnouncementsPanel && <AnnouncementsPanel />}
+          </div>
           <div id={setupGuideId} hidden={!setupGuideExpanded}>
             {setupGuideExpanded && (
               <CardStaggerContainer className='grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
@@ -787,8 +815,6 @@ export function OverviewDashboard() {
             </CardStaggerContainer>
           )}
 
-          <SummaryCards />
-
           {showContentPanels && (
             <CardStaggerContainer
               className={cn(
@@ -802,10 +828,7 @@ export function OverviewDashboard() {
                 <div
                   className={cn(
                     'grid min-w-0 grid-cols-1 gap-4',
-                    (showApiInfoPanel ||
-                      showAnnouncementsPanel ||
-                      showFAQPanel) &&
-                      'lg:grid-cols-2'
+                    (showApiInfoPanel || showFAQPanel) && 'lg:grid-cols-2'
                   )}
                 >
                   {isAdmin && (
@@ -816,11 +839,6 @@ export function OverviewDashboard() {
                   {showApiInfoPanel && (
                     <CardStaggerItem>
                       <ApiInfoPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showAnnouncementsPanel && (
-                    <CardStaggerItem>
-                      <AnnouncementsPanel />
                     </CardStaggerItem>
                   )}
                   {showFAQPanel && (

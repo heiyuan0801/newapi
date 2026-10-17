@@ -39,6 +39,7 @@ type OAuthProvidersProps = {
   onWeChatLogin?: () => void
   isWeChatLoading?: boolean
   redirectTo?: string
+  showDivider?: boolean
 }
 
 type ProviderButton = {
@@ -56,6 +57,7 @@ export function OAuthProviders({
   onWeChatLogin,
   isWeChatLoading = false,
   redirectTo,
+  showDivider = true,
 }: OAuthProvidersProps) {
   const { t } = useTranslation()
   const {
@@ -145,18 +147,7 @@ export function OAuthProviders({
   if (providerButtons.length === 0) return null
 
   return (
-    <div className={cn('space-y-3', className)}>
-      <div className='relative'>
-        <div className='absolute inset-0 flex items-center'>
-          <span className='w-full border-t' />
-        </div>
-        <div className='relative flex justify-center text-xs uppercase'>
-          <span className='bg-background text-muted-foreground px-2'>
-            {t('Or continue with')}
-          </span>
-        </div>
-      </div>
-
+    <div className={cn('flex flex-col gap-6', className)}>
       <div className='flex flex-col gap-2'>
         {providerButtons.map(
           ({ key, label, onClick, icon, disabled: extraDisabled }) => (
@@ -166,14 +157,21 @@ export function OAuthProviders({
               type='button'
               disabled={disabled || isLoading || extraDisabled}
               onClick={onClick}
-              className='h-11 w-full justify-center gap-2 rounded-lg'
+              className='h-11.5 w-full justify-center gap-2 rounded-full'
             >
-              {icon}
+              {icon && <span aria-hidden='true'>{icon}</span>}
               {label}
             </Button>
           )
         )}
       </div>
+      {showDivider && (
+        <div className='text-muted-foreground flex items-center gap-3 text-xs'>
+          <span className='border-border/70 flex-1 border-t' />
+          <span>{t('Or continue with your account')}</span>
+          <span className='border-border/70 flex-1 border-t' />
+        </div>
+      )}
     </div>
   )
 }

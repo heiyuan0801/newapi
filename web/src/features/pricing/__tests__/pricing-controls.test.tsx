@@ -16,15 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import i18next from 'i18next'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PricingSidebar } from '../components/pricing-sidebar'
 import {
   PricingToolbar,
   type PricingToolbarProps,
 } from '../components/pricing-toolbar'
+import { SearchBar } from '../components/search-bar'
 import type { PricingModel } from '../types'
 
 function toolbarProps(): PricingToolbarProps {
@@ -60,7 +62,125 @@ function toolbarProps(): PricingToolbarProps {
   }
 }
 
+afterEach(async () => {
+  await i18next.changeLanguage('en')
+})
+
 describe('pricing controls', () => {
+  it('selects a group from the horizontal filter menu and exposes the selected option', async () => {
+    const props = toolbarProps()
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <PricingSidebar {...props} layout='horizontal' />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Reset' })
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Groups: All' }))
+    const premium = screen.getByRole('menuitemradio', { name: /premium/ })
+    expect(premium).toHaveAttribute('aria-checked', 'false')
+    await user.click(premium)
+    expect(props.onGroupChange).toHaveBeenCalledWith('premium')
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('menuitemradio', { name: /premium/ })
+      ).not.toBeInTheDocument()
+    )
+
+    rerender(
+      <PricingSidebar
+        {...props}
+        layout='horizontal'
+        groupFilter='premium'
+        hasActiveFilters
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Groups: premium' }))
+    expect(
+      await screen.findByRole('menuitemradio', { name: /premium/ })
+    ).toHaveAttribute('aria-checked', 'true')
+    await user.keyboard('{Escape}')
+    expect(
+      screen.getByRole('button', { name: 'Groups: premium' })
+    ).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(props.onClearFilters).toHaveBeenCalledOnce()
+  })
+
+  it('keeps every filter category available in the horizontal catalog bar when the catalog is empty', () => {
+    render(<PricingSidebar {...toolbarProps()} layout='horizontal' />)
+    const filters = screen.getByRole('group', { name: 'Filter' })
+    for (const category of [
+      'Vendor',
+      'Groups',
+      'Model Tags',
+      'Endpoint Type',
+      'Pricing Type',
+    ]) {
+      expect(
+        within(filters).getByRole('button', { name: `${category}: All` })
+      ).toBeVisible()
+    }
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+  })
+
+  it('focuses catalog search with the keyboard shortcut and clears it through its accessible action', async () => {
+    const props = { value: '', onChange: vi.fn(), onClear: vi.fn() }
+    const user = userEvent.setup()
+    const { rerender } = render(<SearchBar {...props} />)
+    const search = screen.getByRole('textbox', { name: 'Search models' })
+    await user.keyboard('{Control>}k{/Control}')
+    expect(search).toHaveFocus()
+    await user.paste('claude')
+    expect(props.onChange).toHaveBeenLastCalledWith('claude')
+    rerender(<SearchBar {...props} value='claude' />)
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(props.onClear).toHaveBeenCalledOnce()
+    search.focus()
+    await user.keyboard('{Escape}')
+    expect(search).not.toHaveFocus()
+  })
+
+  it('shows the selected provider as the catalog heading while preserving the filtered total', () => {
+    render(
+      <PricingToolbar
+        {...toolbarProps()}
+        vendorFilter='Vendor A'
+        filteredCount={1}
+      />
+    )
+    expect(screen.getByRole('heading', { name: 'Vendor A' })).toBeVisible()
+    expect(screen.getByText('model').parentElement).toHaveTextContent(
+      /1\s*model\s*\/\s*2/
+    )
+  })
+
+  it.each([
+    ['zhCN', '1,234'],
+    ['zhTW', '1,234'],
+    ['en', '1,234'],
+    ['fr', '1\u202f234'],
+    ['ru', '1\u00a0234'],
+    ['ja', '1,234'],
+    ['vi', '1.234'],
+    ['invalid-language', '1,234'],
+  ])(
+    'formats the catalog total for interface language %s without an invalid Intl locale',
+    async (language, expected) => {
+      await i18next.changeLanguage(language)
+      render(
+        <PricingToolbar
+          {...toolbarProps()}
+          filteredCount={1234}
+          totalCount={1234}
+        />
+      )
+      expect(
+        screen.getByText(expected, { normalizer: (value) => value })
+      ).toBeVisible()
+    }
+  )
+
   it('counts each model once per filter and updates counts when the catalog changes', () => {
     const props = toolbarProps()
     const base: PricingModel = {
@@ -197,12 +317,14 @@ describe('pricing controls', () => {
     expect(props.onSortChange).toHaveBeenCalledWith('input-price-low')
   })
 
-  it('opens mobile filters from the left, selects a group, and restores focus on close', async () => {
+  it('opens catalog filters from the left, selects a group, and restores focus on close', async () => {
     const props = toolbarProps()
     const user = userEvent.setup()
     const { rerender } = render(<PricingToolbar {...props} />)
-    await user.click(screen.getByRole('button', { name: 'Filter' }))
+    const filterTrigger = screen.getByRole('button', { name: 'Filter' })
+    await user.click(filterTrigger)
     const dialog = await screen.findByRole('dialog', { name: 'Filter' })
+    expect(filterTrigger).toHaveAttribute('aria-expanded', 'true')
     expect(dialog).toHaveAttribute('data-side', 'left')
     expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled()
     await user.click(within(dialog).getByRole('button', { name: /premium/ }))

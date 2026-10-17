@@ -18,9 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { useMediaQuery } from '@/hooks'
 
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
@@ -66,11 +68,12 @@ function setFilterValue(
 
 export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   const { t } = useTranslation()
+  const isMobile = useMediaQuery('(max-width: 640px)')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
   const { isAdminView: isAdmin } = useLogsViewScope()
-  const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
+  const fetchingLogs = useIsFetching({ queryKey: ['logs', props.logCategory] })
 
   const [filters, setFilters] = useState<TaskLogsFilters>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -116,38 +119,62 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   )
 
   const handleApply = useCallback(() => {
+    if (fetchingLogs > 0) return
     const filterParams = buildSearchParams(filters, props.logCategory)
+    const nextSearch: Record<string, unknown> = {
+      ...filterParams,
+      page: 1,
+      pageSize: searchParams.pageSize,
+    }
+    const appliedSearch: Record<string, unknown> = searchParams
+    const isSameSearch = Object.keys({ ...appliedSearch, ...nextSearch }).every(
+      (key) => appliedSearch[key] === nextSearch[key]
+    )
+    void queryClient.invalidateQueries({
+      queryKey: ['logs', props.logCategory],
+      refetchType: isSameSearch ? 'active' : 'none',
+    })
     navigate({
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
-      search: {
-        ...filterParams,
-        page: 1,
-      },
+      search: nextSearch,
     })
-    queryClient.invalidateQueries({ queryKey: ['logs'] })
-  }, [filters, navigate, props.logCategory, queryClient])
+  }, [
+    fetchingLogs,
+    filters,
+    navigate,
+    props.logCategory,
+    queryClient,
+    searchParams,
+  ])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
     const resetFilters: TaskLogsFilters = { startTime: start, endTime: end }
     setFilters(resetFilters)
 
+    void queryClient.invalidateQueries({
+      queryKey: ['logs', props.logCategory],
+      refetchType: 'none',
+    })
     navigate({
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
       search: {
         page: 1,
+        pageSize: searchParams.pageSize,
         startTime: start.getTime(),
         endTime: end.getTime(),
       },
     })
-    queryClient.invalidateQueries({ queryKey: ['logs'] })
-  }, [navigate, props.logCategory, queryClient])
+  }, [navigate, props.logCategory, queryClient, searchParams.pageSize])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') handleApply()
+      if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+        e.preventDefault()
+        handleApply()
+      }
     },
     [handleApply]
   )
@@ -164,10 +191,16 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     props.logCategory === 'drawing'
       ? t('Filter by MjProxy task ID')
       : t('Filter by task ID')
-  const hasAdditionalFilters = !!filterValue || !!filters.channel
+  const hasActiveFilters = !!(
+    filters.startTime ||
+    filters.endTime ||
+    filterValue ||
+    filters.channel
+  )
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
+        splitTrigger={!isMobile}
         start={filters.startTime}
         end={filters.endTime}
         onChange={({ start, end }) => {
@@ -191,6 +224,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   const channelFilter = isAdmin ? (
     <LogsFilterField>
       <LogsFilterInput
+        aria-label={t('Channel ID')}
         placeholder={t('Channel ID')}
         value={filters.channel || ''}
         onChange={(e) => handleChange('channel', e.target.value)}
@@ -202,22 +236,33 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   return (
     <LogsFilterToolbar
       table={props.table}
+      compactMobile
+      compactDesktop
+      searchVariant='default'
       primaryFilters={
         <>
           {dateRangeFilter}
           {taskIdFilter}
-          {channelFilter}
         </>
       }
-      mobilePinnedFilters={dateRangeFilter}
-      mobileFilters={
+      advancedFilters={channelFilter}
+      mobilePinnedFilters={
         <>
+          {dateRangeFilter}
           {taskIdFilter}
-          {channelFilter}
         </>
       }
-      mobileFilterCount={[filterValue, filters.channel].filter(Boolean).length}
-      hasActiveFilters={hasAdditionalFilters}
+      mobileFilters={channelFilter}
+      showMobileFilter={isAdmin}
+      mobileFilterCount={filters.channel ? 1 : 0}
+      advancedFilterCount={filters.channel ? 1 : 0}
+      hasAdvancedActiveFilters={!!filters.channel}
+      hasActiveFilters={hasActiveFilters}
+      onRefresh={() => {
+        void queryClient.invalidateQueries({
+          queryKey: ['logs', props.logCategory],
+        })
+      }}
       onSearch={handleApply}
       searchLoading={fetchingLogs > 0}
       onReset={handleReset}

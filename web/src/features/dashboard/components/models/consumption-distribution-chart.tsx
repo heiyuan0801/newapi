@@ -32,6 +32,7 @@ import { processChartData } from '@/features/dashboard/lib'
 import type {
   ConsumptionDistributionChartType,
   QuotaDataItem,
+  FlowMetric,
 } from '@/features/dashboard/types'
 import { useThemeRadiusPx } from '@/lib/theme-radius'
 import type { TimeGranularity } from '@/lib/time'
@@ -46,6 +47,8 @@ interface ConsumptionDistributionChartProps {
   loading?: boolean
   timeGranularity?: TimeGranularity
   defaultChartType?: ConsumptionDistributionChartType
+  embedded?: boolean
+  metric?: FlowMetric
 }
 
 const CHART_TYPE_ICONS: Record<
@@ -101,58 +104,74 @@ export function ConsumptionDistributionChart(
   const chartData = useMemo(
     () =>
       processChartData(
-        props.loading ? [] : props.data,
+        props.loading
+          ? []
+          : props.data.map((item) => ({
+              ...item,
+              // Reuse the integer trend projection for token quantities.
+              count: props.metric === 'tokens' ? item.token_used : item.count,
+            })),
         timeGranularity,
         t,
         chartRadius
       ),
-    [props.data, props.loading, timeGranularity, t, chartRadius]
+    [props.data, props.loading, props.metric, timeGranularity, t, chartRadius]
   )
-  const spec = chartType === 'bar' ? chartData.spec_line : chartData.spec_area
+  let spec = chartType === 'bar' ? chartData.spec_line : chartData.spec_area
+  if (props.metric && props.metric !== 'quota') spec = chartData.spec_model_line
   const specType = typeof spec?.type === 'string' ? spec.type : chartType
   const chartKey = [
     chartType,
     specType,
     props.loading ? 'loading' : 'ready',
     props.data.length,
+    props.metric,
     resolvedTheme,
     customization.preset,
   ].join('-')
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='flex w-full flex-col gap-1.5 border-b px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
-        <div className='flex items-center gap-2'>
-          <IconBadge tone='success' size='sm'>
-            <WalletCards />
-          </IconBadge>
-          <div className='text-sm font-semibold'>{t('Quota Distribution')}</div>
-          <span className='text-muted-foreground text-xs'>
-            {t('Total:')} {chartData.totalQuotaDisplay}
-          </span>
-        </div>
+    <div
+      className={
+        props.embedded ? 'min-w-0' : 'overflow-hidden rounded-lg border'
+      }
+    >
+      {!props.embedded && (
+        <div className='flex w-full flex-col gap-1.5 border-b px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='flex items-center gap-2'>
+            <IconBadge tone='success' size='sm'>
+              <WalletCards />
+            </IconBadge>
+            <div className='text-sm font-semibold'>
+              {t('Quota Distribution')}
+            </div>
+            <span className='text-muted-foreground text-xs'>
+              {t('Total:')} {chartData.totalQuotaDisplay}
+            </span>
+          </div>
 
-        <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
-          {CONSUMPTION_DISTRIBUTION_CHART_OPTIONS.map((item) => {
-            const Icon = CHART_TYPE_ICONS[item.value]
-            return (
-              <button
-                key={item.value}
-                type='button'
-                onClick={() => setChartType(item.value)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
-                  chartType === item.value
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className='size-3.5' />
-                {t(item.labelKey)}
-              </button>
-            )
-          })}
+          <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
+            {CONSUMPTION_DISTRIBUTION_CHART_OPTIONS.map((item) => {
+              const Icon = CHART_TYPE_ICONS[item.value]
+              return (
+                <button
+                  key={item.value}
+                  type='button'
+                  onClick={() => setChartType(item.value)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+                    chartType === item.value
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className='size-3.5' />
+                  {t(item.labelKey)}
+                </button>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
         {themeReady && spec && (
@@ -162,6 +181,7 @@ export function ConsumptionDistributionChart(
               ...spec,
               theme: resolvedTheme === 'dark' ? 'dark' : 'light',
               background: 'transparent',
+              ...(props.embedded ? { title: { visible: false } } : {}),
             }}
             option={VCHART_OPTION}
           />

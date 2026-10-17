@@ -16,14 +16,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  Database02Icon,
+  DollarCircleIcon,
+  FlashIcon,
+  TextFirstlineLeftIcon,
+} from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import {
+  Card,
+  CardAction,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatLogQuota } from '@/lib/format'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatLogQuota, formatNumber } from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
-import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
@@ -32,29 +46,18 @@ import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
-function StatBadge(props: {
-  label: string
-  value: string | number
-  accent: string
-}) {
-  return (
-    <span className='border-border/60 bg-muted/25 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs'>
-      <span className={cn('h-3.5 w-0.5 rounded-full', props.accent)} />
-      <span className='text-muted-foreground'>{props.label}</span>
-      <span className='text-foreground/85 font-mono font-semibold tabular-nums'>
-        {props.value}
-      </span>
-    </span>
-  )
-}
-
 export function CommonLogsStats() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { isAdminView: isAdmin } = useLogsViewScope()
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
-  const { data: stats, isLoading } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['usage-logs-stats', isAdmin, searchParams],
     queryFn: async () => {
       const params = buildApiParams({
@@ -64,45 +67,77 @@ export function CommonLogsStats() {
         columnFilters: [],
         isAdmin,
       })
-
       const result = isAdmin
         ? requireServerSuccess(await getLogStats(params))
         : requireServerSuccess(await getUserLogStats(params))
-
-      return result.success
-        ? result.data || DEFAULT_LOG_STATS
-        : DEFAULT_LOG_STATS
+      return result.data || DEFAULT_LOG_STATS
     },
     placeholderData: (previousData) => previousData,
   })
 
-  if (isLoading) {
-    return (
-      <div className='flex items-center gap-2'>
-        <Skeleton className='h-7 w-[150px] rounded-md' />
-        <Skeleton className='h-7 w-[100px] rounded-md' />
-        <Skeleton className='h-7 w-[120px] rounded-md' />
-      </div>
-    )
-  }
+  const unavailable = isError && !stats
+  const consumption = sensitiveVisible
+    ? formatLogQuota(stats?.quota || 0)
+    : '••••'
+  const cards = [
+    {
+      label: t('Period Consumption'),
+      description: t('Total consumption in the selected period'),
+      value: unavailable ? '—' : consumption,
+      icon: Database02Icon,
+    },
+    {
+      label: t('Current RPM'),
+      description: t('Requests per minute'),
+      value: unavailable ? '—' : formatNumber(stats?.rpm || 0, locale),
+      icon: FlashIcon,
+    },
+    {
+      label: t('Current TPM'),
+      description: t('Tokens per minute'),
+      value: unavailable ? '—' : formatNumber(stats?.tpm || 0, locale),
+      icon: TextFirstlineLeftIcon,
+    },
+    {
+      label: t('Current MPM'),
+      description: t('Temporarily unavailable'),
+      value: '—',
+      icon: DollarCircleIcon,
+    },
+  ]
 
   return (
-    <div className='flex flex-wrap items-center gap-2'>
-      <StatBadge
-        label={t('Usage')}
-        value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
-        accent='bg-sky-500/70'
-      />
-      <StatBadge
-        label={t('RPM')}
-        value={stats?.rpm || 0}
-        accent='bg-rose-500/65'
-      />
-      <StatBadge
-        label={t('TPM')}
-        value={stats?.tpm || 0}
-        accent='bg-slate-400/70'
-      />
-    </div>
+    <section
+      aria-label={t('Usage statistics')}
+      className='grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4'
+    >
+      {cards.map((card) => (
+        <Card
+          key={card.label}
+          className='min-w-0 rounded-[14px] border py-0 shadow-none ring-0'
+        >
+          <CardHeader className='flex min-w-0 flex-wrap items-center gap-2.5 p-3 sm:flex-nowrap sm:p-4'>
+            <span className='bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-full'>
+              <HugeiconsIcon icon={card.icon} size={19} aria-hidden='true' />
+            </span>
+            <div className='min-w-0 flex-1'>
+              <CardTitle className='text-xs font-medium sm:text-sm'>
+                {card.label}
+              </CardTitle>
+              <CardDescription className='mt-1 text-[11px] leading-4 sm:text-xs'>
+                {card.description}
+              </CardDescription>
+            </div>
+            <CardAction className='w-full min-w-0 self-center text-lg font-semibold [overflow-wrap:anywhere] tabular-nums sm:w-auto sm:text-right'>
+              {isLoading && card.label !== t('Current MPM') ? (
+                <Skeleton className='h-6 w-12' />
+              ) : (
+                card.value
+              )}
+            </CardAction>
+          </CardHeader>
+        </Card>
+      ))}
+    </section>
   )
 }

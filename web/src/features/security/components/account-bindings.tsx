@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Mail, Shield, Send, Link2, Unlink } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -56,6 +62,7 @@ import {
   authRequestOptions,
   authResult,
 } from '@/lib/secure-verification'
+import { cn } from '@/lib/utils'
 
 import { useAccountSecurity } from '../hooks/use-account-security'
 import { EmailBindDialog } from './dialogs/email-bind-dialog'
@@ -68,6 +75,8 @@ import { WeChatBindDialog } from './dialogs/wechat-bind-dialog'
 interface AccountBindingsProps {
   profile: UserProfile | null
   onUpdate: () => void
+  presentation?: 'default' | 'compact'
+  children?: ReactNode
 }
 
 type DialogKey = 'email' | 'wechat'
@@ -78,7 +87,13 @@ type PreparedOAuthBinding = AccountSecurityResult & {
   url: string
 }
 
-export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
+export function AccountBindings({
+  profile,
+  onUpdate,
+  presentation,
+  children,
+}: AccountBindingsProps) {
+  const compact = presentation === 'compact'
   const { t } = useTranslation()
   const dialogs = useDialogs<DialogKey>()
   const { status, loading } = useStatus()
@@ -313,16 +328,34 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
       isEnabled: status?.linuxdo_oauth || false,
       onBind: () => void startOAuthBinding('linuxdo'),
     },
-  ].filter((binding) => binding.isEnabled)
+  ].filter(
+    (binding) =>
+      binding.isEnabled ||
+      (compact && ['email', 'github', 'oidc', 'wechat'].includes(binding.id))
+  )
+  if (compact) {
+    const order = ['email', 'github', 'oidc', 'wechat']
+    bindings.sort((left, right) => {
+      const leftIndex = order.indexOf(left.id)
+      const rightIndex = order.indexOf(right.id)
+      return (
+        (leftIndex < 0 ? order.length : leftIndex) -
+        (rightIndex < 0 ? order.length : rightIndex)
+      )
+    })
+  }
 
   return (
     <>
       <ul
         aria-label={t('Account Bindings')}
-        className='grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3'
+        className={cn(
+          'grid grid-cols-1 gap-2 sm:grid-cols-2',
+          compact ? 'gap-4' : 'lg:grid-cols-3'
+        )}
       >
         {bindings.map((binding) => {
-          let actionLabel = t('Bind')
+          let actionLabel = binding.isEnabled ? t('Bind') : t('Not enabled')
           if (binding.isBound && binding.id === 'email') {
             actionLabel = t('Change')
           } else if (binding.isBound) {
@@ -332,10 +365,19 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
           return (
             <li
               key={binding.id}
-              className='flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2'
+              className={cn(
+                'flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2',
+                compact && 'min-h-[70px] rounded-[14px] px-4 py-3'
+              )}
             >
               <div className='flex min-w-0 items-center gap-2'>
-                <div className='bg-muted shrink-0 rounded-md p-1.5'>
+                <div
+                  className={cn(
+                    'bg-muted shrink-0 rounded-md p-1.5',
+                    compact &&
+                      'bg-background rounded-[10px] border p-2 text-muted-foreground'
+                  )}
+                >
                   <binding.icon className='h-4 w-4' />
                 </div>
                 <div className='min-w-0'>
@@ -346,7 +388,7 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
                     >
                       {binding.label}
                     </p>
-                    {binding.isBound && (
+                    {binding.isBound && !compact && (
                       <StatusBadge
                         label={t('Bound')}
                         variant='success'
@@ -355,7 +397,8 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
                     )}
                   </div>
                   <p className='text-muted-foreground truncate text-xs'>
-                    {binding.value || t('Not bound')}
+                    {binding.value ||
+                      (binding.isBound ? t('Bound') : t('Not bound'))}
                   </p>
                 </div>
               </div>
@@ -365,7 +408,9 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
                 className='h-7 shrink-0 px-2.5 text-xs'
                 onClick={binding.onBind}
                 disabled={
-                  bindingsLocked || (binding.isBound && binding.id !== 'email')
+                  bindingsLocked ||
+                  !binding.isEnabled ||
+                  (binding.isBound && binding.id !== 'email')
                 }
               >
                 {actionLabel}
@@ -379,10 +424,19 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
           return (
             <li
               key={provider.id}
-              className='flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2'
+              className={cn(
+                'flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2',
+                compact && 'min-h-[70px] rounded-[14px] px-4 py-3'
+              )}
             >
               <div className='flex min-w-0 items-center gap-2'>
-                <div className='bg-muted shrink-0 rounded-md p-1.5'>
+                <div
+                  className={cn(
+                    'bg-muted shrink-0 rounded-md p-1.5',
+                    compact &&
+                      'bg-background rounded-[10px] border p-2 text-muted-foreground'
+                  )}
+                >
                   <Link2 className='h-4 w-4' />
                 </div>
                 <div className='min-w-0'>
@@ -433,6 +487,7 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
             </li>
           )
         })}
+        {children}
       </ul>
 
       {security.showVerification && (

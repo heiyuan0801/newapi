@@ -32,33 +32,40 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
-            {t('Sign in')}
-          </h2>
-          {!status?.self_use_mode_enabled &&
-            status?.register_enabled !== false && (
-              <p className='text-muted-foreground text-left text-sm sm:text-base'>
-                {t("Don't have an account?")}{' '}
-                <Link
-                  to='/sign-up'
-                  className='hover:text-primary font-medium underline underline-offset-4'
-                >
-                  {t('Sign up')}
-                </Link>
-                .
-              </p>
-            )}
+      <div className='flex w-full flex-col gap-7'>
+        <div className='flex flex-col items-center gap-4 text-center'>
+          <span className='bg-muted rounded-full px-3.5 py-1.5 text-xs font-medium'>
+            {t('Sign in to your account')}
+          </span>
+          <h1 className='text-3xl font-semibold tracking-tight'>
+            {t('Access your account')}
+          </h1>
+          <p className='text-muted-foreground text-sm leading-6'>
+            {t('Welcome back. Continue your AI journey with us.')}
+          </p>
         </div>
 
         <UserAuthForm redirectTo={redirect} />
 
-        <TermsFooter
-          variant='sign-in'
-          status={status}
-          className='text-center'
-        />
+        <div className='flex flex-col gap-5'>
+          {!status?.self_use_mode_enabled &&
+            status?.register_enabled !== false && (
+              <p className='text-muted-foreground text-center text-sm'>
+                {t("Don't have an account?")}{' '}
+                <Link
+                  to='/sign-up'
+                  className='text-foreground font-medium underline underline-offset-4 hover:opacity-70'
+                >
+                  {t('Sign up')}
+                </Link>
+              </p>
+            )}
+          <TermsFooter
+            variant='sign-in'
+            status={status}
+            className='text-center leading-5'
+          />
+        </div>
       </div>
     </AuthLayout>
   )

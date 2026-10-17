@@ -27,6 +27,9 @@ func GetPerfMetricsSummary(c *gin.Context) {
 	}
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
 	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups, recentModels...)
+	if err == nil && c.Query("include_groups") == "true" {
+		result.GroupModels, err = perfmetrics.QuerySummaryGroups(result.WindowStart, result.WindowEnd, activeGroups)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,

@@ -16,10 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
+import { Wallet } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import { ProfileDropdown } from '@/components/profile-dropdown'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarRail,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import { useLayout } from '@/context/layout-provider'
+import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
@@ -44,15 +58,22 @@ import { SidebarViewHeader } from './sidebar-view-header'
  * in the registry; this component requires no changes.
  */
 export function AppSidebar() {
+  const { t } = useTranslation()
+  const { setOpenMobile } = useSidebar()
+  const walletVisible = useIsSidebarModuleVisible('/wallet')
   const { collapsible, variant } = useLayout()
   const { key, view, navGroups } = useSidebarView()
   const shouldReduce = useReducedMotion()
 
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
+    <Sidebar
+      collapsible={collapsible}
+      variant={variant}
+      className='console-surface'
+    >
       {view && <SidebarViewHeader view={view} />}
 
-      <SidebarContent className='py-2'>
+      <SidebarContent className='pt-1 pb-4'>
         <AnimatePresence mode='wait' initial={false}>
           <motion.div
             key={key}
@@ -71,6 +92,34 @@ export function AppSidebar() {
         </AnimatePresence>
       </SidebarContent>
 
+      <SidebarFooter className='gap-3 px-3 pb-3'>
+        {walletVisible && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size='lg'
+                tooltip={t('Top Up')}
+                className='border-border/70 h-auto rounded-2xl border px-3 py-4'
+                render={
+                  <Link to='/wallet' onClick={() => setOpenMobile(false)} />
+                }
+              >
+                <Wallet aria-hidden className='size-5 shrink-0' />
+                <span className='grid gap-1 group-data-[collapsible=icon]:hidden'>
+                  <span className='text-xs font-medium'>{t('Top Up')}</span>
+                  <span className='text-muted-foreground text-[11px]'>
+                    {t('Manage your balance')}
+                  </span>
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+        <ProfileDropdown
+          variant='sidebar'
+          onNavigate={() => setOpenMobile(false)}
+        />
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

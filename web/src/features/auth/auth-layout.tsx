@@ -19,45 +19,65 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { ThemeSwitch } from '@/components/theme-switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
+
+import './auth-surface.css'
 
 type AuthLayoutProps = {
   children: React.ReactNode
 }
 
-export function AuthLayout({ children }: AuthLayoutProps) {
+export function AuthLayout(props: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()
 
   return (
-    <div className='relative grid h-svh max-w-none'>
-      <Link
-        to='/'
-        className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
-      >
-        <div className='relative h-8 w-8'>
+    <div className='public-surface auth-surface bg-background text-foreground flex min-h-svh flex-col'>
+      <header className='flex min-h-20 shrink-0 items-center justify-between gap-4 px-6 sm:px-10'>
+        <Link
+          to='/'
+          className='flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-75'
+        >
+          <div className='relative size-8 shrink-0'>
+            {loading ? (
+              <Skeleton className='absolute inset-0 rounded-lg' />
+            ) : (
+              <img
+                src={logo}
+                alt={t('Logo')}
+                className='size-8 rounded-lg object-contain'
+              />
+            )}
+          </div>
           {loading ? (
-            <Skeleton className='absolute inset-0 rounded-full' />
+            <Skeleton className='h-6 w-24' />
           ) : (
-            <img
-              src={logo}
-              alt={t('Logo')}
-              className='h-8 w-8 rounded-full object-cover'
-            />
+            <span className='truncate text-xl font-semibold tracking-tight'>
+              {systemName}
+            </span>
           )}
+        </Link>
+        <ThemeSwitch />
+      </header>
+      <main className='flex flex-1 items-center justify-center px-4 py-12 sm:px-6 sm:py-16'>
+        <div className='auth-card border-border/70 bg-background w-full min-w-0 rounded-3xl border px-6 py-9 sm:p-10'>
+          {props.children}
         </div>
-        {loading ? (
-          <Skeleton className='h-6 w-24' />
-        ) : (
-          <h1 className='text-xl font-medium'>{systemName}</h1>
-        )}
-      </Link>
-      <div className='container flex items-center pt-16 sm:pt-0'>
-        <div className='mx-auto flex w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8'>
-          {children}
-        </div>
-      </div>
+      </main>
+      <footer className='text-muted-foreground shrink-0 px-6 pb-7 text-center text-xs'>
+        &copy; {new Date().getFullYear()}{' '}
+        <a
+          href='https://github.com/QuantumNous/new-api'
+          target='_blank'
+          rel='noopener noreferrer'
+          className='text-foreground hover:underline'
+        >
+          New API
+        </a>
+        {' · QuantumNous'}
+      </footer>
     </div>
   )
 }

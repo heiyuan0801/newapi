@@ -89,7 +89,7 @@ afterEach(() => {
   } else Reflect.deleteProperty(navigator, 'credentials')
 })
 
-it.each(['2fa', 'passkey'] as const)(
+it.each(['2fa', 'passkey', 'passkey-compact'] as const)(
   'blocks %s enrollment and explains missing Telegram configuration',
   async (factor) => {
     const reason =
@@ -114,12 +114,18 @@ it.each(['2fa', 'passkey'] as const)(
       factor === '2fa' ? (
         <TwoFACard loading={false} />
       ) : (
-        <PasskeyCard loading={false} />
+        <PasskeyCard
+          loading={false}
+          presentation={factor === 'passkey-compact' ? 'compact' : 'default'}
+        />
       )
     )
-    const enable = await screen.findByRole('button', {
-      name: factor === '2fa' ? 'Enable' : 'Enable Passkey',
-    })
+    const enableLabel = {
+      '2fa': 'Enable',
+      passkey: 'Enable Passkey',
+      'passkey-compact': 'Bind',
+    }[factor]
+    const enable = await screen.findByRole('button', { name: enableLabel })
     await waitFor(() => expect(enable).toBeEnabled())
     await user.click(enable)
     expect(await screen.findByText(reason)).toBeVisible()

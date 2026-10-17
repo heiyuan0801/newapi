@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
-  ClipboardList,
   CreditCard,
   FileText,
   FlaskConical,
+  Gift,
+  HeartPulse,
   Key,
   LayoutDashboard,
-  ListTodo,
   MessageSquare,
   PlugZap,
   Radio,
@@ -54,6 +54,74 @@ export function useSidebarData(): SidebarData {
   return {
     navGroups: [
       {
+        id: 'general',
+        title: t('General'),
+        items: [
+          {
+            title: t('Dashboard'),
+            url: '/dashboard/overview',
+            icon: Activity,
+          },
+          {
+            title: t('Model Call Analytics'),
+            url: '/dashboard/models',
+            icon: LayoutDashboard,
+          },
+          {
+            title: t('API Keys'),
+            url: '/keys',
+            icon: Key,
+          },
+          {
+            title: t('Logs'),
+            icon: FileText,
+            items: [
+              { title: t('Usage Logs'), url: '/usage-logs/common' },
+              { title: t('Drawing Logs'), url: '/usage-logs/drawing' },
+              { title: t('Task Logs'), url: '/usage-logs/task' },
+              { title: t('Audit Logs'), url: '/usage-logs/audit' },
+            ],
+          },
+          {
+            title: t('Model Availability'),
+            url: '/model-availability',
+            icon: HeartPulse,
+          },
+        ],
+      },
+      {
+        id: 'personal',
+        title: t('Finance'),
+        items: [
+          {
+            title: t('Top Up'),
+            url: '/wallet',
+            icon: Wallet,
+          },
+          {
+            title: t('Referral Program'),
+            url: '/wallet/affiliate',
+            icon: Gift,
+          },
+        ],
+      },
+      {
+        id: 'account',
+        title: t('Manage'),
+        items: [
+          {
+            title: t('Profile'),
+            url: '/profile',
+            icon: User,
+          },
+          {
+            title: t('Security & Access'),
+            url: '/security',
+            icon: ShieldCheck,
+          },
+        ],
+      },
+      {
         id: 'chat',
         title: t('Chat'),
         items: [
@@ -66,65 +134,6 @@ export function useSidebarData(): SidebarData {
             title: t('Chat'),
             icon: MessageSquare,
             type: 'chat-presets',
-          },
-        ],
-      },
-      {
-        id: 'general',
-        title: t('General'),
-        items: [
-          {
-            title: t('Overview'),
-            url: '/dashboard/overview',
-            icon: Activity,
-          },
-          {
-            title: t('Dashboard'),
-            url: '/dashboard/models',
-            icon: LayoutDashboard,
-          },
-          {
-            title: t('API Keys'),
-            url: '/keys',
-            icon: Key,
-          },
-          {
-            title: t('Usage Logs'),
-            url: '/usage-logs/common',
-            icon: FileText,
-          },
-          {
-            title: t('Audit Logs'),
-            url: '/usage-logs/audit',
-            icon: ClipboardList,
-          },
-          {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
-          },
-        ],
-      },
-      {
-        id: 'personal',
-        title: t('Personal'),
-        items: [
-          {
-            title: t('Wallet'),
-            url: '/wallet',
-            icon: Wallet,
-          },
-          {
-            title: t('Profile'),
-            url: '/profile',
-            icon: User,
-          },
-          {
-            title: t('Security & Access'),
-            url: '/security',
-            icon: ShieldCheck,
           },
         ],
       },

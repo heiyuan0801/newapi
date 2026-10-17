@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
 import { formatCreemPrice } from '../lib/format'
@@ -36,13 +37,14 @@ export function CreemProductsSection({
   onProductSelect,
   loading,
 }: CreemProductsSectionProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
   if (loading) {
     return (
       <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className='h-24 rounded-lg' />
+        {['first', 'second', 'third'].map((key) => (
+          <Skeleton key={key} className='h-24 rounded-lg' />
         ))}
       </div>
     )
@@ -55,22 +57,22 @@ export function CreemProductsSection({
   return (
     <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
       {products.map((product) => (
-        <Card
+        <Button
           key={product.productId}
-          data-card-hover='false'
-          className='cursor-pointer'
+          variant='outline'
+          className='flex h-auto min-w-0 flex-col gap-2 rounded-[10px] p-3 text-center whitespace-normal sm:p-4'
           onClick={() => onProductSelect(product)}
         >
-          <CardContent className='p-3 text-center sm:p-4'>
-            <div className='mb-2 text-lg font-medium'>{product.name}</div>
-            <div className='text-muted-foreground mb-2 text-sm'>
-              {t('Quota')}: {formatNumber(product.quota)}
-            </div>
-            <div className='text-primary text-lg font-semibold'>
-              {formatCreemPrice(product.price, product.currency)}
-            </div>
-          </CardContent>
-        </Card>
+          <span className='max-w-full text-base font-semibold break-words'>
+            {product.name}
+          </span>
+          <span className='text-muted-foreground text-xs'>
+            {t('Quota')}: {formatNumber(product.quota, locale)}
+          </span>
+          <span className='text-base font-semibold'>
+            {formatCreemPrice(product.price, product.currency)}
+          </span>
+        </Button>
       ))}
     </div>
   )

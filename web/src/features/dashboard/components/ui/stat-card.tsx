@@ -52,6 +52,8 @@ interface StatCardProps {
   action?: ReactNode
   iconTone?: IconBadgeTone
   compactMobile?: boolean
+  appearance?: 'default' | 'overview' | 'daily'
+  iconClassName?: string
 }
 
 const TONE_CLASSES: Record<StatCardTone, string> = {
@@ -236,6 +238,70 @@ export function StatCard(props: StatCardProps) {
   const tone = props.tone ?? 'accent-3'
   const iconTone = props.iconTone ?? ICON_TONE_BY_STAT_TONE[tone]
   const sparklineVariant = props.sparklineVariant ?? 'bars'
+  if (props.appearance === 'overview' || props.appearance === 'daily') {
+    const daily = props.appearance === 'daily'
+    return (
+      <div
+        role='group'
+        aria-label={props.title}
+        className={cn(
+          'bg-card flex min-w-0 rounded-2xl border p-4 sm:p-5',
+          daily ? 'items-center gap-4' : 'min-h-40 flex-col gap-5'
+        )}
+      >
+        {daily && (
+          <span
+            className={cn(
+              'flex size-11 shrink-0 items-center justify-center rounded-full text-white',
+              props.iconClassName
+            )}
+          >
+            <Icon className='size-5' aria-hidden='true' />
+          </span>
+        )}
+        <div
+          className={cn(
+            'flex min-w-0 flex-1',
+            daily ? 'flex-col gap-1' : 'flex-col gap-5'
+          )}
+        >
+          <div className='flex items-center justify-between gap-3'>
+            <div
+              className={cn(
+                'text-sm',
+                daily ? 'text-muted-foreground' : 'font-medium'
+              )}
+            >
+              {props.title}
+            </div>
+            {!daily && (
+              <span
+                className={cn(
+                  'flex size-9 shrink-0 items-center justify-center rounded-full text-white',
+                  props.iconClassName
+                )}
+              >
+                <Icon className='size-[18px]' aria-hidden='true' />
+              </span>
+            )}
+          </div>
+          {props.loading ? (
+            <Skeleton className='h-7 w-24' />
+          ) : (
+            <div className='text-2xl leading-none font-semibold tracking-tight break-all tabular-nums'>
+              {props.error ? '—' : props.value}
+            </div>
+          )}
+          {!daily && (
+            <div className='text-muted-foreground mt-auto flex flex-wrap items-center justify-between gap-2 text-xs'>
+              <span>{props.description}</span>
+              {props.action}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
   let valueContent: ReactNode
   if (props.loading) {
     valueContent = (

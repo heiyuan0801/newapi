@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
-import { User, Wallet, LogOut, Settings, ShieldCheck } from 'lucide-react'
+import {
+  User,
+  Wallet,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  ChevronsUpDown,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -40,12 +47,14 @@ import { useAuthStore } from '@/stores/auth-store'
 
 const avatarFallbackClassName = 'font-semibold text-white'
 
-export function ProfileDropdown() {
+export function ProfileDropdown(
+  props: { variant?: 'avatar' | 'sidebar'; onNavigate?: () => void } = {}
+) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [open, setOpen] = useDialogState()
   const user = useAuthStore((state) => state.auth.user)
-  const { displayName, roleLabel } = useUserDisplay(user)
+  const { displayName, secondaryText, roleLabel } = useUserDisplay(user)
   const isSuperAdmin = user?.role === ROLE.SUPER_ADMIN
   const isWalletVisible = useIsSidebarModuleVisible('/wallet')
   const isSecurityVisible = useIsSidebarModuleVisible('/security')
@@ -60,9 +69,23 @@ export function ProfileDropdown() {
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger
-          render={<Button variant='ghost' className='relative size-6 p-0' />}
+          render={
+            <Button
+              variant='ghost'
+              aria-label={t('Account menu')}
+              className={
+                props.variant === 'sidebar'
+                  ? 'h-auto w-full justify-start gap-2 rounded-xl px-1 py-2 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0'
+                  : 'relative size-7 p-0'
+              }
+            />
+          }
         >
-          <Avatar className='size-6'>
+          <Avatar
+            className={
+              props.variant === 'sidebar' ? 'size-8 shrink-0' : 'size-7'
+            }
+          >
             <AvatarFallback
               className={`${avatarFallbackClassName} text-[11px]`}
               style={avatarFallbackStyle}
@@ -70,8 +93,27 @@ export function ProfileDropdown() {
               {avatarFallback}
             </AvatarFallback>
           </Avatar>
+          {props.variant === 'sidebar' && (
+            <>
+              <span className='grid min-w-0 flex-1 text-left text-xs group-data-[collapsible=icon]:hidden'>
+                <span className='truncate font-medium'>{displayName}</span>
+                <span className='text-muted-foreground mt-0.5 truncate text-[11px]'>
+                  {secondaryText || roleLabel}
+                </span>
+              </span>
+              <ChevronsUpDown
+                aria-hidden
+                className='ml-auto size-3.5 group-data-[collapsible=icon]:hidden'
+              />
+            </>
+          )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' sideOffset={8} className='w-56'>
+        <DropdownMenuContent
+          align='end'
+          side={props.variant === 'sidebar' ? 'top' : 'bottom'}
+          sideOffset={8}
+          className='console-surface w-56'
+        >
           <div className='flex items-center gap-2 px-1.5 py-1.5'>
             <Avatar className='size-8'>
               <AvatarFallback
@@ -103,20 +145,35 @@ export function ProfileDropdown() {
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem onClick={() => navigate({ to: '/profile' })}>
+          <DropdownMenuItem
+            onClick={() => {
+              props.onNavigate?.()
+              void navigate({ to: '/profile' })
+            }}
+          >
             <User className='size-4' />
             {t('Profile')}
           </DropdownMenuItem>
 
           {isSecurityVisible && (
-            <DropdownMenuItem onClick={() => navigate({ to: '/security' })}>
+            <DropdownMenuItem
+              onClick={() => {
+                props.onNavigate?.()
+                void navigate({ to: '/security' })
+              }}
+            >
               <ShieldCheck className='size-4' />
               {t('Security & Access')}
             </DropdownMenuItem>
           )}
 
           {isWalletVisible && (
-            <DropdownMenuItem onClick={() => navigate({ to: '/wallet' })}>
+            <DropdownMenuItem
+              onClick={() => {
+                props.onNavigate?.()
+                void navigate({ to: '/wallet' })
+              }}
+            >
               <Wallet className='size-4' />
               {t('Wallet')}
             </DropdownMenuItem>
@@ -124,12 +181,13 @@ export function ProfileDropdown() {
 
           {isSuperAdmin && (
             <DropdownMenuItem
-              onClick={() =>
-                navigate({
+              onClick={() => {
+                props.onNavigate?.()
+                void navigate({
                   to: '/system-settings/site/$section',
                   params: { section: 'system-info' },
                 })
-              }
+              }}
             >
               <Settings className='size-4' />
               {t('System Settings')}

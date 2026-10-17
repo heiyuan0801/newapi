@@ -243,23 +243,42 @@ describe('security page migration', () => {
     )
   })
 
-  it('Profile retains preferences and no longer mounts security controls or requests', async () => {
+  it('Profile opens account bindings and only mounts other security controls after selecting the security tab', async () => {
+    const user = userEvent.setup()
     await renderPage('/profile')
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Save Settings' })
-      ).toBeVisible()
-    )
+    const bindings = await screen.findByRole('list', {
+      name: 'Account Bindings',
+    })
+    expect(bindings).toHaveClass('sm:grid-cols-2')
+    expect(
+      screen.getByRole('tab', { name: 'Account Bindings' })
+    ).toHaveAttribute('aria-selected', 'true')
     expect(
       screen.queryByRole('button', { name: 'Change Password' })
     ).not.toBeInTheDocument()
-    expect(screen.queryByText('Account Bindings')).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('switch', { name: 'Record IP Address' })
-    ).not.toBeInTheDocument()
-    expect(api.get).not.toHaveBeenCalledWith('/api/user/passkey')
     expect(api.get).not.toHaveBeenCalledWith('/api/user/2fa/status')
     expect(api.get).not.toHaveBeenCalledWith('/api/user/sessions')
+
+    await user.click(
+      screen.getByRole('tab', { name: 'Subscription Notifications' })
+    )
+    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeVisible()
+    expect(
+      screen.queryByRole('list', { name: 'Account Bindings' })
+    ).not.toBeInTheDocument()
+    expect(api.get).not.toHaveBeenCalledWith('/api/user/2fa/status')
+
+    await user.click(screen.getByRole('tab', { name: 'Security Settings' }))
+    expect(
+      await screen.findByRole('button', { name: 'Change Password' })
+    ).toBeVisible()
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith(
+        '/api/user/2fa/status',
+        expect.anything()
+      )
+    )
+    expect(api.get).toHaveBeenCalledWith('/api/user/sessions')
   })
 
   it('a failed profile load offers retry before exposing account actions', async () => {

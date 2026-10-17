@@ -35,6 +35,7 @@ interface CompactDateTimeRangePickerProps {
   end?: Date
   onChange: (range: { start?: Date; end?: Date }) => void
   className?: string
+  splitTrigger?: boolean
 }
 
 function toInputValue(date?: Date): string {
@@ -52,6 +53,7 @@ export function CompactDateTimeRangePicker({
   end,
   onChange,
   className,
+  splitTrigger = false,
 }: CompactDateTimeRangePickerProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -131,16 +133,39 @@ export function CompactDateTimeRangePicker({
             className={cn(
               'w-full justify-start gap-2 px-2.5 text-sm leading-5 font-normal tabular-nums',
               !start && !end && 'text-muted-foreground',
+              splitTrigger &&
+                'h-8 gap-2 border-0 bg-transparent p-0 shadow-none hover:bg-transparent',
               className
             )}
           />
         }
       >
-        <CalendarDays className='text-muted-foreground size-4 shrink-0' />
-        <span className='hidden truncate sm:block'>{label}</span>
-        <span className='min-w-0 [overflow-wrap:anywhere] whitespace-normal sm:hidden'>
-          {mobileLabel}
-        </span>
+        {splitTrigger ? (
+          <>
+            <span className='bg-background flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 text-xs'>
+              <span className='text-muted-foreground'>{t('Start')}</span>
+              <span className='truncate'>
+                {start ? dayjs(start).format('YYYY-MM-DD HH:mm:ss') : '—'}
+              </span>
+              <CalendarDays className='text-muted-foreground ms-auto shrink-0' />
+            </span>
+            <span className='bg-background flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 text-xs'>
+              <span className='text-muted-foreground'>{t('End')}</span>
+              <span className='truncate'>
+                {end ? dayjs(end).format('YYYY-MM-DD HH:mm:ss') : '—'}
+              </span>
+              <CalendarDays className='text-muted-foreground ms-auto shrink-0' />
+            </span>
+          </>
+        ) : (
+          <>
+            <CalendarDays className='text-muted-foreground size-4 shrink-0' />
+            <span className='hidden truncate sm:block'>{label}</span>
+            <span className='min-w-0 [overflow-wrap:anywhere] whitespace-normal sm:hidden'>
+              {mobileLabel}
+            </span>
+          </>
+        )}
       </PopoverTrigger>
       <PopoverContent
         align='start'

@@ -17,8 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
-import { describe, expect, test } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { api } from '@/lib/api'
 
 import type { TaskLog } from '../../types'
 import { TaskArtifactsCell } from '../task-artifacts'
@@ -57,6 +60,8 @@ function renderCell(log: TaskLog) {
   )
 }
 
+afterEach(() => vi.restoreAllMocks())
+
 describe('task artifacts cell', () => {
   test('given a synchronous result the gateway did not retain, a hint replaces the artifacts button', () => {
     renderCell(taskLog({ result_discarded: true }))
@@ -82,5 +87,29 @@ describe('task artifacts cell', () => {
     expect(
       screen.queryByRole('button', { name: /Artifacts/ })
     ).not.toBeInTheDocument()
+  })
+  test('loads retained results only after the keyboard opens the preview and offers retry after an API failure', async () => {
+    const user = userEvent.setup()
+    const request = vi
+      .spyOn(api, 'get')
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce({
+        data: { success: true, data: { artifacts: [] } },
+      })
+    renderCell(taskLog())
+    expect(request).not.toHaveBeenCalled()
+    const preview = screen.getByRole('button', { name: 'Artifacts' })
+    preview.focus()
+    await user.keyboard('{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Artifacts' })
+    expect(
+      await within(dialog).findByText('Failed to load artifacts')
+    ).toBeVisible()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+
+    expect(await within(dialog).findByText('None')).toBeVisible()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(within(dialog).getByText('Task ID: task-public')).toBeVisible()
   })
 })

@@ -27,6 +27,9 @@ import {
   DataTableRow,
   useDataTable,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import {
   getAdminPlans,
   getSelfSubscriptionFull,
@@ -49,6 +52,7 @@ import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
+import { TaskLogsSummary } from './task-logs-summary'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
 import { useLogsViewScope, type LogsViewAccess } from './usage-logs-provider'
 
@@ -160,7 +164,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     ],
   })
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: [
       'logs',
       logCategory,
@@ -226,21 +230,30 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const isCommon = logCategory === 'common'
+  const emptyDescription = isCommon
+    ? t(
+        'No usage logs available. Logs will appear here once API calls are made.'
+      )
+    : t(
+        'Submitted tasks will appear here. Try adjusting the date range or task ID.'
+      )
 
-  return (
+  const tableContent = (
     <DataTablePage
+      fixedHeight={false}
+      paginationInFooter={false}
+      tableHeaderClassName='bg-card [&_th]:h-11'
       table={table}
-      compactPagination={isMobile && isCommon}
+      compactPagination={isMobile}
       columns={columns as ColumnDef<Record<string, unknown>>[]}
       isLoading={isLoadingData}
       isFetching={isFetching}
       emptyTitle={t('No Logs Found')}
-      emptyDescription={t(
-        'No usage logs available. Logs will appear here once API calls are made.'
-      )}
+      emptyDescription={emptyDescription}
       skeletonKeyPrefix='usage-log-skeleton'
       applyHeaderSize
       tableClassName={cn(
+        'rounded-none border-0 bg-card [&_td]:py-3.5 [&_td[colspan]]:h-[200px]',
         '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
       )}
       mobile={
@@ -248,15 +261,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
           table={table}
           isLoading={isLoadingData}
           logCategory={logCategory}
+          emptyDescription={emptyDescription}
         />
       }
-      toolbar={
-        isCommon ? (
-          <CommonLogsFilterBar table={table} />
-        ) : (
-          <TaskLogsFilterBar table={table} logCategory={logCategory} />
-        )
-      }
+      toolbarProps={null}
       renderRow={(row) => {
         const logType = (row.original as Record<string, unknown>).type as
           | number
@@ -283,5 +291,57 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         )
       }}
     />
+  )
+
+  if (!isCommon) {
+    return (
+      <div className='flex min-w-0 flex-col gap-5'>
+        <TaskLogsSummary
+          total={data?.total}
+          statuses={logs.map((log) => ('status' in log ? log.status : ''))}
+          loading={isLoadingData}
+          busy={isFetching}
+        />
+        <TaskLogsFilterBar table={table} logCategory={logCategory} />
+        <div className='bg-card min-w-0 overflow-hidden rounded-[14px] border p-3 sm:p-4'>
+          {isError && !data ? (
+            <ErrorState
+              title={t('Failed to load logs')}
+              onRetry={() => void refetch()}
+              className='min-h-[200px]'
+            />
+          ) : (
+            <>
+              {isError && (
+                <Alert className='mb-4'>
+                  <AlertDescription className='flex flex-wrap items-center justify-between gap-3'>
+                    {t(
+                      'Unable to refresh logs. Showing the last loaded records.'
+                    )}
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      onClick={() => void refetch()}
+                    >
+                      {t('Retry')}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {tableContent}
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className='flex min-w-0 flex-col gap-5'>
+      <CommonLogsFilterBar table={table} />
+      <div className='bg-card min-w-0 overflow-hidden rounded-[14px] border p-3 sm:p-4'>
+        {tableContent}
+      </div>
+    </div>
   )
 }

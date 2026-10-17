@@ -51,27 +51,19 @@ interface UsageLogsMobileListProps<TData> {
   logCategory: LogCategory
 }
 
-function UsageLogsMobileSkeleton(props: { separate: boolean }) {
+function UsageLogsMobileSkeleton() {
   const { t } = useTranslation()
   return (
     <div
       role='status'
       aria-label={t('Loading')}
       aria-busy='true'
-      className={
-        props.separate
-          ? 'min-w-0 space-y-3'
-          : 'border-border/50 bg-card overflow-hidden rounded-lg border'
-      }
+      className='min-w-0 space-y-3'
     >
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className={
-            props.separate
-              ? 'border-border/60 bg-card space-y-3 rounded-xl border p-3.5'
-              : 'border-border/40 space-y-2.5 border-b p-3 last:border-b-0'
-          }
+          className='border-border/60 bg-card space-y-3 rounded-xl border p-3.5'
         >
           <div className='flex items-center justify-between gap-3'>
             <Skeleton className='h-5 w-40 rounded-md' />
@@ -164,10 +156,13 @@ function TaskLogsCard<TData>({
   const statusCell = cells.get('status')
 
   return (
-    <div className='space-y-2.5'>
+    <div className='min-w-0 space-y-3'>
       <div className='flex min-w-0 items-start justify-between gap-3'>
         <CompactCell cell={taskIdCell} className='flex-1' />
-        <CompactCell cell={statusCell} className='shrink-0 text-right' />
+        <CompactCell
+          cell={statusCell}
+          className='max-w-28 shrink-0 text-right'
+        />
       </div>
 
       <div className='grid grid-cols-2 gap-1.5'>
@@ -196,25 +191,30 @@ function DrawingLogsCard<TData>({
 }) {
   const { t } = useTranslation()
 
-  const actionCell = cells.get('action')
-  const codeCell = cells.get('code')
+  const taskIdCell = cells.get('mj_id')
+  const statusCell = cells.get('status')
   const submitTimeCell = cells.get('submit_time')
 
   return (
-    <div className='space-y-2.5'>
+    <div className='min-w-0 space-y-3'>
       <div className='flex min-w-0 items-start justify-between gap-3'>
-        <CompactCell cell={actionCell} className='flex-1' />
-        <CompactCell cell={codeCell} className='shrink-0 text-right' />
+        <CompactCell cell={taskIdCell} className='flex-1' />
+        <CompactCell
+          cell={statusCell}
+          className='max-w-28 shrink-0 text-right'
+        />
       </div>
 
       <div className='grid grid-cols-2 gap-1.5'>
         <SummaryField label={t('Submit Time')} cell={submitTimeCell} />
         <SummaryField
           label={t('Channel')}
-          cell={cells.get('channel')}
+          cell={cells.get('channel_id')}
           primaryOnly
         />
-        <SummaryField label={t('Task ID')} cell={cells.get('mj_id')} />
+        <SummaryField label={t('Type')} cell={cells.get('action')} />
+        <SummaryField label={t('Submit Result')} cell={cells.get('code')} />
+        <SummaryField label={t('Progress')} cell={cells.get('progress')} />
         <SummaryField
           label={t('Duration')}
           cell={cells.get('duration')}
@@ -251,14 +251,14 @@ export function UsageLogsMobileList<TData>({
     t('No usage logs available. Logs will appear here once API calls are made.')
 
   if (isLoading) {
-    return <UsageLogsMobileSkeleton separate={logCategory === 'common'} />
+    return <UsageLogsMobileSkeleton />
   }
 
   const rows = table.getRowModel().rows
 
   if (!rows || rows.length === 0) {
     return (
-      <div className='rounded-lg border p-6'>
+      <div className='bg-card rounded-2xl border p-6'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -273,13 +273,7 @@ export function UsageLogsMobileList<TData>({
   }
 
   return (
-    <div
-      className={cn(
-        logCategory === 'common'
-          ? 'min-w-0 space-y-3'
-          : 'border-border/50 bg-card overflow-hidden rounded-lg border'
-      )}
-    >
+    <div className='min-w-0 space-y-3'>
       {rows.map((row) => {
         const cells = new Map(
           row.getVisibleCells().map((cell) => [cell.column.id, cell])
@@ -294,9 +288,7 @@ export function UsageLogsMobileList<TData>({
           <div
             key={row.id}
             className={cn(
-              logCategory === 'common'
-                ? 'border-border/60 bg-card min-w-0 rounded-xl border p-3.5'
-                : 'border-border/40 border-b border-l-2 border-l-transparent p-3 transition-colors last:border-b-0',
+              'border-border/60 bg-card min-w-0 rounded-xl border p-3.5',
               tintClass
             )}
           >

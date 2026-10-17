@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
+import { ConsoleBreadcrumb } from './console-breadcrumb'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -38,7 +39,11 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   return (
     <LayoutProvider>
       <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+        <SidebarProvider
+          defaultOpen={defaultOpen}
+          className='console-surface flex-col'
+          style={{ '--sidebar-width': '15rem' } as React.CSSProperties}
+        >
           <SkipToMain />
           <AppHeader />
           <div className='flex min-h-0 w-full flex-1'>
@@ -51,6 +56,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
+              <ConsoleBreadcrumb />
               {props.children ?? <AnimatedOutlet />}
             </SidebarInset>
           </div>

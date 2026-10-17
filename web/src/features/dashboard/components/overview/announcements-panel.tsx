@@ -17,106 +17,134 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Megaphone } from 'lucide-react'
-import { memo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
+import { EmptyState } from '@/components/empty-state'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAnnouncements } from '@/features/dashboard/hooks/use-status-data'
 import { getPreviewText } from '@/features/dashboard/lib'
 import type { AnnouncementItem } from '@/features/dashboard/types'
-import { getAnnouncementColorClass } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
-import { cn } from '@/lib/utils'
 
-import { PanelWrapper } from '../ui/panel-wrapper'
 import { AnnouncementDetailModal } from './announcement-detail-dialog'
 
-const AnnouncementStatusDot = memo(function AnnouncementStatusDot(props: {
-  type?: string
-}) {
-  return (
-    <span
-      className={cn(
-        'mt-1.5 inline-block size-2 shrink-0 rounded-full',
-        getAnnouncementColorClass(props.type)
-      )}
-    />
-  )
-})
+const NOTICE_TABS = [
+  { value: 'all', label: 'Announcements' },
+  { value: 'pricing', label: 'Pricing notices' },
+] as const
 
 export function AnnouncementsPanel() {
   const { t } = useTranslation()
   const { items: list, loading } = useAnnouncements()
+  const [activeTab, setActiveTab] = useState('all')
   const [selectedAnnouncement, setSelectedAnnouncement] =
     useState<AnnouncementItem | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-
-  const handleAnnouncementClick = (item: AnnouncementItem) => {
-    setSelectedAnnouncement(item)
-    setIsDialogOpen(true)
-  }
+  // The status contract has no notice category. Keep every notice in the main
+  // list and offer a content-based view of existing pricing notices.
+  const pricingNotices = useMemo(
+    () =>
+      list.filter((item) =>
+        /调价|价格|计费|费用|\b(?:pricing|prices?|billing|rates?)\b/i.test(
+          item.content
+        )
+      ),
+    [list]
+  )
 
   return (
-    <PanelWrapper
-      title={
-        <span className='flex items-center gap-2'>
-          <IconBadge tone='warning' size='sm'>
-            <Megaphone />
-          </IconBadge>
-          {t('Announcements')}
-        </span>
-      }
-      description={t('Latest platform updates and notices')}
-      loading={loading}
-      empty={!list.length}
-      emptyMessage={t('No announcements at this time')}
-      height='h-72'
-      contentClassName='p-0'
+    <section
+      aria-label={t('Announcements')}
+      className='bg-card flex min-w-0 flex-col rounded-2xl border p-4 sm:p-5'
     >
-      <ScrollArea className='h-72'>
-        <div>
-          {list.map((item: AnnouncementItem, idx: number) => {
-            const key = item.id ?? `announcement-${idx}`
-            return (
-              <button
-                key={key}
-                type='button'
-                onClick={() => handleAnnouncementClick(item)}
-                className={cn(
-                  'group hover:bg-muted/40 w-full px-3 py-3 text-left transition-colors sm:px-5 sm:py-3.5',
-                  idx < list.length - 1 && 'border-border/60 border-b'
-                )}
-              >
-                <div className='flex items-start gap-2.5'>
-                  <AnnouncementStatusDot type={item.type} />
-                  <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                    <p className='line-clamp-1 text-sm font-medium'>
-                      {getPreviewText(item.content)}
-                    </p>
-                    <div className='flex items-center justify-between'>
-                      {item.publishDate && (
-                        <time className='text-muted-foreground/60 text-xs'>
-                          {formatDateTimeObject(new Date(item.publishDate))}
-                        </time>
-                      )}
-                      <span className='text-muted-foreground/40 text-xs opacity-0 transition-opacity group-hover:opacity-100'>
-                        {t('Click for details')}
-                      </span>
-                    </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(String(value))}
+        className='flex-1'
+      >
+        <TabsList
+          aria-label={t('Announcements')}
+          className='max-w-full rounded-full border bg-transparent group-data-horizontal/tabs:h-9'
+        >
+          {NOTICE_TABS.map((tab) => (
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className='data-active:bg-foreground data-active:text-background rounded-full px-3 text-xs data-active:shadow-none'
+            >
+              {t(tab.label)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {NOTICE_TABS.map((tab) => {
+          const notices = tab.value === 'pricing' ? pricingNotices : list
+          return (
+            <TabsContent
+              key={tab.value}
+              value={tab.value}
+              className='mt-4 min-h-[340px] sm:min-h-[460px]'
+            >
+              {loading ? <Skeleton className='h-[340px] w-full' /> : null}
+              {!loading && !notices.length ? (
+                <EmptyState
+                  icon={Megaphone}
+                  title={
+                    tab.value === 'pricing'
+                      ? t('No pricing notices at this time')
+                      : t('No announcements at this time')
+                  }
+                  className='min-h-[340px] sm:min-h-[420px]'
+                />
+              ) : null}
+              {!loading && notices.length > 0 ? (
+                <ScrollArea className='h-[360px] sm:h-[460px]'>
+                  <div className='flex flex-col gap-2 pr-1'>
+                    {notices.map((item, index) => (
+                      <Button
+                        key={item.id ?? index}
+                        variant='ghost'
+                        onClick={() => {
+                          setSelectedAnnouncement(item)
+                          setIsDialogOpen(true)
+                        }}
+                        className='hover:bg-muted/40 h-auto w-full flex-col items-stretch justify-start gap-3 rounded-xl border p-3.5 text-left whitespace-normal'
+                      >
+                        <span className='flex items-center gap-2'>
+                          <span className='bg-muted shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium'>
+                            {t('Notice')}
+                          </span>
+                          <span className='min-w-0 flex-1 truncate text-xs font-medium'>
+                            {getPreviewText(item.content, 70)}
+                          </span>
+                          {item.publishDate && (
+                            <time className='text-muted-foreground shrink-0 text-[10px] font-normal'>
+                              {formatDateTimeObject(new Date(item.publishDate))}
+                            </time>
+                          )}
+                        </span>
+                        {index === 0 && (
+                          <span className='text-muted-foreground line-clamp-4 text-xs leading-6 font-normal'>
+                            {getPreviewText(item.content, 240)}
+                          </span>
+                        )}
+                      </Button>
+                    ))}
                   </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </ScrollArea>
-
+                </ScrollArea>
+              ) : null}
+            </TabsContent>
+          )
+        })}
+      </Tabs>
       <AnnouncementDetailModal
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         announcement={selectedAnnouncement}
       />
-    </PanelWrapper>
+    </section>
   )
 }

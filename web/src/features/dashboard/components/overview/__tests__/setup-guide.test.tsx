@@ -113,8 +113,14 @@ describe('overview setup guide', () => {
     const toggle = await screen.findByRole('button', { name: 'Setup guide' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(
-      screen.getAllByRole('heading').map((heading) => heading.textContent)
-    ).toEqual(['Overview', 'Usage at a glance'])
+      screen.getByRole('heading', { name: /Welcome back, dashboard-user/ })
+    ).toBeVisible()
+    expect(
+      screen.getByRole('region', { name: 'Usage at a glance' })
+    ).toBeVisible()
+    expect(
+      screen.getByRole('heading', { name: 'Model usage statistics' })
+    ).toBeVisible()
     expect(screen.queryByText('Setup guide complete')).not.toBeInTheDocument()
     expect(screen.queryByText('Setup progress: 3/3')).not.toBeInTheDocument()
     for (const name of ['API Keys', 'Channels', 'Usage Logs', 'Pricing']) {

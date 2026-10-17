@@ -27,12 +27,13 @@ import { getPricing } from '../api'
 export function usePricingData(enabled = true) {
   const { status } = useStatus()
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pricing'],
-    queryFn: async () => requireServerSuccess(await getPricing()),
-    staleTime: 5 * 60 * 1000,
-    enabled,
-  })
+  const { data, isLoading, isFetching, dataUpdatedAt, error, refetch } =
+    useQuery({
+      queryKey: ['pricing'],
+      queryFn: async () => requireServerSuccess(await getPricing()),
+      staleTime: 5 * 60 * 1000,
+      enabled,
+    })
 
   // Ensure rates never reach zero to prevent division errors
   const priceRate = useMemo(
@@ -72,6 +73,9 @@ export function usePricingData(enabled = true) {
     endpointMap: data?.supported_endpoint ?? {},
     autoGroups: data?.auto_groups ?? [],
     isLoading,
+    isFetching,
+    dataUpdatedAt,
+    hasData: data !== undefined,
     error,
     refetch,
     priceRate,

@@ -1,0 +1,62 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+.console-surface {
+  --app-header-height: 4rem;
+  --radius: 0.5rem;
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --secondary-foreground: var(--foreground);
+  --accent: var(--muted);
+  --ring: var(--foreground);
+  --sidebar: var(--background);
+  --sidebar-primary: var(--foreground);
+  --sidebar-primary-foreground: var(--background);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: transparent;
+  --sidebar-ring: var(--foreground);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+}
+.console-surface [data-slot='sidebar-menu-button']:not([data-size='lg']) {
+  height: 36px;
+  border-radius: 10px;
+}
+.console-surface [data-slot='sidebar-menu-button'][data-active] {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--foreground) 15%, transparent);
+}
+.console-surface [data-slot='sidebar-menu-sub-button'] {
+  height: 34px;
+  border-radius: 10px;
+}
+.console-surface [data-slot='sidebar-menu-sub-button'][data-active] {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--foreground) 15%, transparent);
+}
+.console-surface [data-slot='sidebar-group-label'] {
+  height: 30px;
+}
+.console-surface [data-slot='sidebar-group'] + [data-slot='sidebar-group'] {
+  margin-top: 12px;
+}
+.console-surface .api-keys-workspace thead {
+  background: var(--background);
+}

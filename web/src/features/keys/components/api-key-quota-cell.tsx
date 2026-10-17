@@ -31,7 +31,7 @@ import type { ApiKey } from '../types'
 type ApiKeyQuotaCellProps = {
   apiKey: ApiKey
   now: number
-  variant?: 'table' | 'card'
+  variant?: 'table' | 'card' | 'compact'
 }
 
 export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
@@ -110,6 +110,7 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
       }
       triggerClassName={props.variant === 'card' ? 'py-0' : undefined}
       afterTrigger={
+        props.variant !== 'compact' &&
         !props.apiKey.unlimited_quota && (
           <Progress
             value={percentage}
@@ -122,50 +123,70 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
         )
       }
     >
-      <span
-        data-slot='api-key-quota-values'
-        className={cn(
-          'grid w-full min-w-0 items-baseline gap-x-2 gap-y-1 text-sm',
-          props.variant === 'card'
-            ? 'grid-cols-[auto_minmax(0,1fr)]'
-            : 'grid-cols-2'
-        )}
-      >
-        {props.variant === 'card' && (
-          <span className='text-muted-foreground'>
-            {t('Remaining')}
-            <span className='ml-1'>({quotaUnit})</span>
+      {props.variant === 'compact' ? (
+        <span className='flex min-w-0 flex-wrap items-center gap-1.5 text-xs'>
+          <span className='border-border/70 rounded-full border px-1.5 py-0.5 tabular-nums'>
+            {formatQuotaWithCurrency(used)}
           </span>
-        )}
-        <span
-          className={cn(
-            'min-w-0 truncate',
-            props.variant === 'card'
-              ? 'text-right text-sm leading-5 font-normal'
-              : 'text-left font-medium',
-            !props.apiKey.unlimited_quota && 'tabular-nums',
-            !props.apiKey.unlimited_quota &&
+          <span
+            className={cn(
+              'border-border/70 rounded-full border px-1.5 py-0.5 tabular-nums',
               remaining < 0 &&
-              'text-destructive',
-            remaining === 0 &&
-              !props.apiKey.unlimited_quota &&
-              'text-muted-foreground'
-          )}
-        >
-          {props.apiKey.unlimited_quota ? t('Unlimited') : formattedRemaining}
+                !props.apiKey.unlimited_quota &&
+                'text-destructive'
+            )}
+          >
+            {props.apiKey.unlimited_quota
+              ? t('Unlimited')
+              : formatQuotaWithCurrency(remaining)}
+          </span>
         </span>
-        {props.variant === 'card' && (
-          <span className='text-muted-foreground'>{t('Used amount')}</span>
-        )}
+      ) : (
         <span
+          data-slot='api-key-quota-values'
           className={cn(
-            'text-muted-foreground min-w-0 truncate text-right tabular-nums',
-            props.variant === 'card' && 'text-sm leading-5 font-normal'
+            'grid w-full min-w-0 items-baseline gap-x-2 gap-y-1 text-sm',
+            props.variant === 'card'
+              ? 'grid-cols-[auto_minmax(0,1fr)]'
+              : 'grid-cols-2'
           )}
         >
-          {formattedUsed}
+          {props.variant === 'card' && (
+            <span className='text-muted-foreground'>
+              {t('Remaining')}
+              <span className='ml-1'>({quotaUnit})</span>
+            </span>
+          )}
+          <span
+            className={cn(
+              'min-w-0 truncate',
+              props.variant === 'card'
+                ? 'text-right text-sm leading-5 font-normal'
+                : 'text-left font-medium',
+              !props.apiKey.unlimited_quota && 'tabular-nums',
+              !props.apiKey.unlimited_quota &&
+                remaining < 0 &&
+                'text-destructive',
+              remaining === 0 &&
+                !props.apiKey.unlimited_quota &&
+                'text-muted-foreground'
+            )}
+          >
+            {props.apiKey.unlimited_quota ? t('Unlimited') : formattedRemaining}
+          </span>
+          {props.variant === 'card' && (
+            <span className='text-muted-foreground'>{t('Used amount')}</span>
+          )}
+          <span
+            className={cn(
+              'text-muted-foreground min-w-0 truncate text-right tabular-nums',
+              props.variant === 'card' && 'text-sm leading-5 font-normal'
+            )}
+          >
+            {formattedUsed}
+          </span>
         </span>
-      </span>
+      )}
     </QuotaDetailsPopover>
   )
 }

@@ -28,8 +28,14 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import { api } from '@/lib/api'
 import { STATUS_QUERY_KEY, type StatusData } from '@/lib/status-query'
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+} from '@/stores/system-config-store'
 
+import { ApiKeysConnectionSummary } from '../api-keys-connection-summary'
 import { ApiKeysPrimaryButtons } from '../api-keys-primary-buttons'
 import { ApiKeysProvider } from '../api-keys-provider'
 
@@ -37,6 +43,9 @@ let client: QueryClient
 
 beforeEach(() => {
   localStorage.clear()
+  useSystemConfigStore
+    .getState()
+    .setConfig({ currency: { ...DEFAULT_CURRENCY_CONFIG } })
   client = new QueryClient({
     defaultOptions: { queries: { enabled: false, retry: false } },
   })
@@ -213,4 +222,79 @@ it('keeps long addresses readable within the scrollable panel and updates when c
     })
   )
   expect(await navigator.clipboard.readText()).toBe('https://new.example.com')
+})
+
+it('shows account totals from the authenticated API and copies the actual visible BaseURL', async () => {
+  client.setQueryData(STATUS_QUERY_KEY, {
+    server_address: 'https://gateway.example.com/proxy/',
+  })
+  client.setQueryDefaults(['keys-account-summary'], {
+    enabled: true,
+    retry: false,
+  })
+  const get = vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: { quota: 1_000_000, used_quota: 500_000, request_count: 1234 },
+    },
+  })
+  const user = userEvent.setup()
+  const copy = vi.spyOn(navigator.clipboard, 'writeText')
+  render(
+    <QueryClientProvider client={client}>
+      <ApiKeysProvider>
+        <ApiKeysConnectionSummary />
+      </ApiKeysProvider>
+    </QueryClientProvider>
+  )
+  const summary = screen.getByRole('region', {
+    name: 'API connection information',
+  })
+  expect(await within(summary).findByText('$2')).toBeVisible()
+  expect(within(summary).getByText('$1')).toBeVisible()
+  expect(within(summary).getByText('1,234')).toBeVisible()
+  expect(get).toHaveBeenCalledWith('/api/user/self', { skipErrorHandler: true })
+  await user.click(
+    within(summary).getByRole('button', {
+      name: 'Copy API URL: https://gateway.example.com/proxy/',
+    })
+  )
+  expect(copy).toHaveBeenCalledWith('https://gateway.example.com/proxy/')
+  act(() => {
+    client.setQueryData(['keys-account-summary', 0], {
+      quota: 2_000_000,
+      used_quota: 500_000,
+      request_count: 1235,
+    })
+  })
+  expect(await within(summary).findByText('$4')).toBeVisible()
+  expect(within(summary).queryByText('$2')).not.toBeInTheDocument()
+})
+
+it('shows unknown account totals as unavailable and keeps a long BaseURL constrained while allowing full inspection', async () => {
+  const url =
+    'https://regional-gateway.example.com/organization/production/openai-compatible/v1/'
+  client.setQueryData(STATUS_QUERY_KEY, { server_address: url })
+  client.setQueryData(['keys-account-summary', 0], {})
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider client={client}>
+      <ApiKeysProvider>
+        <ApiKeysConnectionSummary />
+      </ApiKeysProvider>
+    </QueryClientProvider>
+  )
+  const summary = screen.getByRole('region', {
+    name: 'API connection information',
+  })
+  expect(within(summary).getAllByText('-')).toHaveLength(3)
+  expect(
+    within(summary).getByRole('button', { name: 'API Addresses' })
+  ).toHaveClass('min-w-0', 'max-w-full')
+  await user.click(
+    within(summary).getByRole('button', { name: 'API Addresses' })
+  )
+  const panel = await screen.findByRole('dialog', { name: 'API Addresses' })
+  expect(within(panel).getByText(url)).toHaveClass('break-all')
+  expect(within(panel).getByText(url)).not.toHaveClass('truncate')
 })

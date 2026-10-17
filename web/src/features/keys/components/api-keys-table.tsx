@@ -27,7 +27,6 @@ import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
-  useDebouncedColumnFilter,
   useDataTable,
 } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
@@ -38,21 +37,16 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { getApiKeys, searchApiKeys } from '../api'
-import {
-  API_KEY_STATUS,
-  API_KEY_STATUS_OPTIONS,
-  API_KEY_STATUSES,
-  ERROR_MESSAGES,
-} from '../constants'
+import { API_KEY_STATUS, API_KEY_STATUSES, ERROR_MESSAGES } from '../constants'
 import type { ApiKey } from '../types'
 import { ApiKeyQuotaCell } from './api-key-quota-cell'
+import { ApiKeyStatusSwitch } from './api-key-status-switch'
 import { ApiKeyActivityCell } from './api-key-timestamp-cell'
 import {
   ApiKeyCell,
@@ -61,6 +55,7 @@ import {
 } from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
+import { ApiKeysToolbar } from './api-keys-toolbar'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -173,6 +168,7 @@ function ApiKeysMobileList({
                 <ApiKeyCell apiKey={apiKey} />
               </div>
               <DataTableRowActions row={row} />
+              <ApiKeyStatusSwitch apiKey={apiKey} />
             </div>
 
             <div className='min-w-0 space-y-3 py-1'>
@@ -248,15 +244,9 @@ export function ApiKeysTable() {
     ],
   })
 
-  const {
-    value: tokenFilter,
-    inputValue: tokenFilterInput,
-    setInputValue: setTokenFilterInput,
-  } = useDebouncedColumnFilter({
-    columnFilters,
-    columnId: '_tokenSearch',
-    onColumnFiltersChange,
-  })
+  const tokenFilter =
+    (columnFilters.find((filter) => filter.id === '_tokenSearch')
+      ?.value as string) || ''
   const shouldSearch = Boolean(globalFilter?.trim() || tokenFilter.trim())
 
   // Fetch data with React Query
@@ -308,6 +298,14 @@ export function ApiKeysTable() {
     data: apiKeys,
     columns,
     enableRowSelection: true,
+    enableSorting: true,
+    withSortedRowModel: true,
+    initialColumnVisibility: {
+      _tokenSearch: false,
+      model_limits: false,
+      allow_ips: false,
+      activity_time: false,
+    },
     columnFilters,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,
@@ -325,7 +323,7 @@ export function ApiKeysTable() {
   useEffect(() => {
     // Restore the dates hidden by the previous default when adopting the combined time column.
     if (
-      columnVisibility.activity_time === undefined &&
+      columnVisibility.activity_time !== true &&
       columnVisibility.created_time === false &&
       columnVisibility.accessed_time === false &&
       columnVisibility.expired_time === false
@@ -339,45 +337,48 @@ export function ApiKeysTable() {
   }, [columnVisibility, table])
 
   return (
-    <DataTablePage
-      table={table}
-      columns={columns}
-      isLoading={isLoading}
-      isFetching={isFetching}
-      emptyTitle={t('No API Keys Found')}
-      emptyDescription={t(
-        'No API keys available. Create your first API key to get started.'
-      )}
-      skeletonKeyPrefix='api-keys-skeleton'
-      applyHeaderSize
-      toolbarProps={{
-        searchPlaceholder: t('Filter by name...'),
-        searchDebounceMs: 500,
-        additionalSearch: (
-          <Input
-            placeholder={t('Filter by API key...')}
-            aria-label={t('Filter by API key...')}
-            value={tokenFilterInput}
-            onChange={(e) => setTokenFilterInput(e.target.value)}
-            className='w-full sm:w-50 lg:w-60'
+    <section className='api-keys-workspace bg-card border-border/70 rounded-2xl border p-4 sm:p-5'>
+      <DataTablePage
+        table={table}
+        columns={columns}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        emptyTitle={t('No API Keys Found')}
+        emptyDescription={t(
+          'No API keys available. Create your first API key to get started.'
+        )}
+        skeletonKeyPrefix='api-keys-skeleton'
+        applyHeaderSize
+        fixedHeight={false}
+        paginationInFooter={false}
+        tableClassName='rounded-none border-x-0 border-b-0 border-t border-border/60 [&_td]:py-4'
+        tableHeaderClassName='bg-card [&_th]:h-10 [&_th]:text-foreground [&_th]:font-semibold'
+        toolbar={
+          <ApiKeysToolbar
+            table={table}
+            tokenFilter={tokenFilter}
+            isFetching={isFetching}
+            onSearch={(name, token) => {
+              onGlobalFilterChange?.(name)
+              onColumnFiltersChange((previous) => {
+                const filters = previous.filter(
+                  (filter) => filter.id !== '_tokenSearch'
+                )
+                return token.trim()
+                  ? [...filters, { id: '_tokenSearch', value: token.trim() }]
+                  : filters
+              })
+            }}
           />
-        ),
-        filters: [
-          {
-            columnId: 'status',
-            title: t('Status'),
-            options: API_KEY_STATUS_OPTIONS,
-            singleSelect: true,
-          },
-        ],
-      }}
-      mobile={
-        <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
-      }
-      getRowClassName={(row) =>
-        isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
-      }
-      bulkActions={<DataTableBulkActions table={table} />}
-    />
+        }
+        mobile={
+          <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
+        }
+        getRowClassName={(row) =>
+          isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
+        }
+        bulkActions={<DataTableBulkActions table={table} />}
+      />
+    </section>
   )
 }

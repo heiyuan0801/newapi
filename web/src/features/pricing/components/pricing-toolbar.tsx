@@ -43,9 +43,17 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
+import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
-import { getSortLabels, type SortOption, type ViewMode } from '../constants'
+import {
+  FILTER_ALL,
+  getSortLabels,
+  type SortOption,
+  type ViewMode,
+} from '../constants'
 import type { PricingModel, PricingVendor, TokenUnit } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
@@ -81,20 +89,64 @@ export interface PricingToolbarProps {
 }
 
 export function PricingToolbar(props: PricingToolbarProps) {
-  const { t } = useTranslation()
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const { t, i18n } = useTranslation()
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const sortLabels = getSortLabels(t)
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const selectedVendor = props.vendors.find(
+    (vendor) => vendor.name === props.vendorFilter
+  )
+  const vendorLabel =
+    props.vendorFilter === FILTER_ALL ? t('All Vendors') : props.vendorFilter
 
   return (
-    <div className='bg-card rounded-xl border p-3'>
+    <div className='bg-card rounded-xl border p-3 sm:p-4'>
       <div className='flex flex-wrap items-center justify-between gap-3'>
-        <div className='flex items-center gap-2'>
+        <div className='flex min-w-0 items-center gap-3'>
+          <div
+            aria-hidden
+            className='bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg'
+          >
+            {selectedVendor?.icon ? (
+              getLobeIcon(selectedVendor.icon, 24)
+            ) : (
+              <span className='bg-foreground text-background flex size-6 items-center justify-center rounded-full text-xs font-semibold'>
+                {vendorLabel.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div className='flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1'>
+            <h2
+              className='max-w-60 truncate text-base font-semibold'
+              title={vendorLabel}
+            >
+              {vendorLabel}
+            </h2>
+            <div className='text-muted-foreground flex items-baseline gap-1 text-xs'>
+              <span className='tabular-nums'>
+                {formatNumber(props.filteredCount, locale)}
+              </span>
+              <span>
+                {props.filteredCount === 1 ? t('model') : t('models')}
+              </span>
+              {props.totalCount != null &&
+                props.filteredCount !== props.totalCount && (
+                  <span className='tabular-nums'>
+                    / {formatNumber(props.totalCount, locale)}
+                  </span>
+                )}
+            </div>
+          </div>
+        </div>
+
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
           <Button
             type='button'
             variant='outline'
             size='sm'
-            onClick={() => setMobileFiltersOpen(true)}
-            className='gap-1.5 xl:hidden'
+            onClick={() => setFiltersOpen(true)}
+            aria-expanded={filtersOpen}
+            className='gap-1.5'
           >
             <Filter className='size-4' />
             {t('Filter')}
@@ -105,21 +157,6 @@ export function PricingToolbar(props: PricingToolbarProps) {
             )}
           </Button>
 
-          <div className='text-muted-foreground flex items-baseline gap-1 text-sm'>
-            <span className='text-foreground font-semibold tabular-nums'>
-              {props.filteredCount.toLocaleString()}
-            </span>
-            <span>{props.filteredCount === 1 ? t('model') : t('models')}</span>
-            {props.totalCount != null &&
-              props.filteredCount !== props.totalCount && (
-                <span className='text-muted-foreground/60 text-xs'>
-                  / {props.totalCount.toLocaleString()}
-                </span>
-              )}
-          </div>
-        </div>
-
-        <div className='flex min-w-0 flex-wrap items-center gap-2'>
           <ToggleGroup
             value={[props.showRechargePrice ? 'recharge' : 'standard']}
             onValueChange={(values) => {
@@ -163,7 +200,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
               <ArrowUpDown className='size-3.5' />
               <span>{sortLabels[props.sortBy as SortOption] || t('Sort')}</span>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align='end' className='w-44'>
+            <DropdownMenuContent align='end' className='public-surface w-44'>
               <DropdownMenuGroup>
                 {Object.entries(sortLabels).map(([value, label]) => (
                   <DropdownMenuItem
@@ -191,10 +228,10 @@ export function PricingToolbar(props: PricingToolbarProps) {
         </div>
       </div>
 
-      <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent
           side='left'
-          className={sideDrawerContentClassName('sm:max-w-md')}
+          className={sideDrawerContentClassName('public-surface sm:max-w-md')}
         >
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>{t('Filter')}</SheetTitle>

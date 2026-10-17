@@ -16,73 +16,75 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Settings, Zap, BarChart3 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { AnimateInView } from '@/components/animate-in-view'
+import { Button } from '@/components/ui/button'
+
+import { HeroTerminalDemo } from '../hero-terminal-demo'
 
 export function HowItWorks() {
   const { t } = useTranslation()
-
   const steps = [
     {
-      num: '1',
-      title: t('Configure'),
-      desc: t(
-        'Add your API keys, set up channels and configure access permissions'
-      ),
-      icon: <Settings className='size-6' strokeWidth={1.5} />,
+      title: t('Create your account'),
+      desc: t('Sign up and open your console to manage your access.'),
     },
     {
-      num: '2',
-      title: t('Connect'),
+      title: t('Create an API token'),
       desc: t(
-        'Connect through OpenAI, Claude, Gemini, and other compatible API routes'
+        'Generate a key in the console and set the permissions you need.'
       ),
-      icon: <Zap className='size-6' strokeWidth={1.5} />,
     },
     {
-      num: '3',
-      title: t('Monitor'),
-      desc: t('Track usage, costs and performance with real-time analytics'),
-      icon: <BarChart3 className='size-6' strokeWidth={1.5} />,
+      title: t('Connect and build'),
+      desc: t(
+        'Set your base URL, choose an enabled model, and send your first request.'
+      ),
     },
   ]
-
   return (
-    <section className='border-border/40 relative z-10 border-t px-6 py-24 md:py-32'>
+    <section className='border-y px-5 py-20 sm:py-24'>
       <div className='mx-auto max-w-6xl'>
-        <AnimateInView className='mb-16 text-center md:mb-20'>
-          <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
-            {t('How It Works')}
-          </p>
-          <h2 className='text-2xl font-bold tracking-tight md:text-3xl'>
-            {t('Three steps to get started')}
+        <div className='mb-12 text-center'>
+          <span className='text-muted-foreground rounded-full border px-3 py-1 text-xs'>
+            {t('Quick Start')}
+          </span>
+          <h2 className='mt-5 text-3xl font-semibold tracking-tight sm:text-4xl'>
+            {t('A few lines of code to get started')}
           </h2>
-        </AnimateInView>
-
-        <div className='grid gap-8 md:grid-cols-3 md:gap-12'>
-          {steps.map((step, i) => (
-            <AnimateInView
-              key={step.num}
-              delay={i * 150}
-              animation='fade-up'
-              className='relative flex flex-col items-center text-center'
-            >
-              <div className='relative mb-6'>
-                <div className='text-muted-foreground border-border/50 bg-muted/30 flex size-16 items-center justify-center rounded-2xl border transition-colors'>
-                  {step.icon}
-                </div>
-                <div className='bg-foreground text-background absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-xs font-bold'>
-                  {step.num}
+          <p className='text-muted-foreground mt-4 text-sm'>
+            {t(
+              'Familiar protocols. A simpler way to connect your AI applications.'
+            )}
+          </p>
+        </div>
+        <div className='grid items-center gap-12 lg:grid-cols-[0.85fr_1.15fr]'>
+          <div className='space-y-8'>
+            {steps.map((step, i) => (
+              <div key={step.title} className='flex gap-4'>
+                <span className='bg-muted flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-medium'>
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className='pt-1 text-sm font-semibold'>{step.title}</h3>
+                  <p className='text-muted-foreground mt-2 text-sm leading-6'>
+                    {step.desc}
+                  </p>
                 </div>
               </div>
-              <h3 className='mb-2 text-base font-semibold'>{step.title}</h3>
-              <p className='text-muted-foreground max-w-[240px] text-sm leading-relaxed'>
-                {step.desc}
-              </p>
-            </AnimateInView>
-          ))}
+            ))}
+            <Button
+              variant='outline'
+              className='rounded-full px-5'
+              render={<Link to='/pricing' />}
+            >
+              {t('Explore models')}
+              <ArrowUpRight aria-hidden className='size-4' />
+            </Button>
+          </div>
+          <HeroTerminalDemo />
         </div>
       </div>
     </section>

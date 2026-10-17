@@ -22,6 +22,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { checkIsActive } from '@/components/layout/lib/url-utils'
+import type { NavGroup } from '@/components/layout/types'
 import {
   parseSidebarModulesAdmin,
   serializeSidebarModulesAdmin,
@@ -73,6 +74,12 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
   return result
 }
 
+function navigationItems(groups: NavGroup[]) {
+  return groups.flatMap((group) =>
+    group.items.flatMap((item) => item.items ?? [item])
+  )
+}
+
 describe('security sidebar visibility', () => {
   it('old configurations show Security & Access immediately after Profile and keep API Keys', () => {
     const { result } = sidebarFor(
@@ -81,13 +88,11 @@ describe('security sidebar visibility', () => {
     )
     expect(
       result.current
-        .find((group) => group.id === 'personal')
+        .find((group) => group.id === 'account')
         ?.items.map((item) => item.title)
-    ).toEqual(['Wallet', 'Profile', 'Security & Access'])
+    ).toEqual(['Profile', 'Security & Access'])
     expect(
-      result.current
-        .flatMap((group) => group.items)
-        .some((item) => item.title === 'API Keys')
+      navigationItems(result.current).some((item) => item.title === 'API Keys')
     ).toBe(true)
   })
   it.each([
@@ -100,9 +105,9 @@ describe('security sidebar visibility', () => {
     (admin, user) => {
       const { result } = sidebarFor(admin, user)
       expect(
-        result.current
-          .flatMap((group) => group.items)
-          .some((item) => item.title === 'Security & Access')
+        navigationItems(result.current).some(
+          (item) => item.title === 'Security & Access'
+        )
       ).toBe(false)
     }
   )
@@ -113,9 +118,9 @@ describe('security sidebar visibility', () => {
       false
     )
     expect(
-      result.current
-        .flatMap((group) => group.items)
-        .some((item) => item.title === 'Security & Access')
+      navigationItems(result.current).some(
+        (item) => item.title === 'Security & Access'
+      )
     ).toBe(true)
   })
 })
@@ -129,22 +134,21 @@ describe('audit log sidebar entry', () => {
     config.console.audit = false
     const saved = parseSidebarModulesAdmin(serializeSidebarModulesAdmin(config))
     const { result } = sidebarFor(saved)
-    const titles = result.current
-      .flatMap((group) => group.items)
-      .map((item) => item.title)
+    const titles = navigationItems(result.current).map((item) => item.title)
     expect(titles).not.toContain('Audit Logs')
     expect(titles).toContain('Usage Logs')
   })
 
-  it('legacy configurations show a separate Audit Logs link immediately after Usage Logs', () => {
+  it('legacy configurations retain independently selectable usage and audit destinations inside Logs', () => {
     const { result } = sidebarFor(
       { console: { enabled: true, log: true } },
       { console: { enabled: true, log: true } }
     )
     const items =
-      result.current.find((group) => group.id === 'general')?.items ?? []
-    const usageIndex = items.findIndex((item) => item.title === 'Usage Logs')
-    expect(items[usageIndex + 1]).toMatchObject({
+      result.current
+        .find((group) => group.id === 'general')
+        ?.items.find((item) => item.title === 'Logs')?.items ?? []
+    expect(items.find((item) => item.title === 'Audit Logs')).toMatchObject({
       title: 'Audit Logs',
       url: '/usage-logs/audit',
     })
@@ -164,19 +168,88 @@ describe('audit log sidebar entry', () => {
     (admin, user) => {
       const { result } = sidebarFor(admin, user)
       expect(
-        result.current
-          .flatMap((group) => group.items)
-          .some((item) => item.title === 'Audit Logs')
+        navigationItems(result.current).some(
+          (item) => item.title === 'Audit Logs'
+        )
       ).toBe(false)
     }
   )
 
   it('hiding Usage Logs does not hide the independently configured Audit Logs entry', () => {
     const { result } = sidebarFor({ console: { enabled: true, log: false } })
-    const titles = result.current
-      .flatMap((group) => group.items)
-      .map((item) => item.title)
+    const titles = navigationItems(result.current).map((item) => item.title)
     expect(titles).not.toContain('Usage Logs')
     expect(titles).toContain('Audit Logs')
+  })
+})
+
+describe('finance destinations', () => {
+  it('shows top-up and referral destinations under the existing wallet visibility setting', () => {
+    const { result } = sidebarFor()
+    expect(
+      result.current
+        .find((group) => group.id === 'personal')
+        ?.items.map((item) => item.url)
+    ).toEqual(['/wallet', '/wallet/affiliate'])
+  })
+
+  it.each([
+    [{ personal: { enabled: true, topup: false } }, undefined],
+    [undefined, { personal: { enabled: true, topup: false } }],
+    [{ personal: { enabled: false } }, undefined],
+  ])(
+    'hiding the wallet also hides the referral link (%j, %j)',
+    (admin, user) => {
+      const { result } = sidebarFor(admin, user)
+      expect(
+        navigationItems(result.current).map((item) => item.url)
+      ).not.toContain('/wallet/affiliate')
+      expect(
+        navigationItems(result.current).map((item) => item.url)
+      ).not.toContain('/wallet')
+    }
+  )
+})
+
+describe('model availability sidebar entry', () => {
+  it('shows Model Availability immediately after Logs as a separate destination', () => {
+    const { result } = sidebarFor()
+    const items =
+      result.current.find((group) => group.id === 'general')?.items ?? []
+    const logsIndex = items.findIndex((item) => item.title === 'Logs')
+    expect(items[logsIndex + 1]).toMatchObject({
+      title: 'Model Availability',
+      url: '/model-availability',
+    })
+    expect(items[logsIndex + 1].items).toBeUndefined()
+    expect(checkIsActive('/model-availability', items[logsIndex + 1])).toBe(
+      true
+    )
+    expect(checkIsActive('/usage-logs/common', items[logsIndex + 1])).toBe(
+      false
+    )
+  })
+
+  it.each([
+    [{ console: { enabled: true, log: false } }, undefined],
+    [undefined, { console: { enabled: true, log: false } }],
+    [{ console: { enabled: false } }, undefined],
+  ])(
+    'hides Model Availability when usage logs visibility is disabled (%j, %j)',
+    (admin, user) => {
+      const { result } = sidebarFor(admin, user)
+      expect(
+        navigationItems(result.current).map((item) => item.url)
+      ).not.toContain('/model-availability')
+    }
+  )
+
+  it('preserves independently enabled audit, drawing and task logs when availability is hidden', () => {
+    const { result } = sidebarFor({ console: { enabled: true, log: false } })
+    const destinations = navigationItems(result.current).map((item) => item.url)
+    expect(destinations).toContain('/usage-logs/audit')
+    expect(destinations).toContain('/usage-logs/drawing')
+    expect(destinations).toContain('/usage-logs/task')
+    expect(destinations).not.toContain('/model-availability')
   })
 })

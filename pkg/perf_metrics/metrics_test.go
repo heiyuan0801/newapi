@@ -195,7 +195,7 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			t.Logf("database version: %s", version)
 
 			now := time.Now()
-			start, _ := queryWindow(now, 24)
+			start, end := queryWindow(now, 24)
 			hour := now.Unix() - now.Unix()%3600 - 3600
 			// Historical counters remain usable without reclassification or migration.
 			for _, row := range []model.PerfMetric{
@@ -236,6 +236,7 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotContains(t, string(encoded), "request_count")
 			assert.NotContains(t, string(encoded), "success_count")
+			assert.NotContains(t, string(encoded), "group_models")
 
 			flushCompletedBuckets()
 			flushCompletedBuckets()
@@ -261,6 +262,83 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, 98.04, combined.Summary.SuccessRate)
 			assert.Equal(t, 99.01, combined.Models[0].SuccessRate)
+
+			t.Run("model groups keep separate weighted summaries", func(t *testing.T) {
+				for _, row := range []model.PerfMetric{
+					{ModelName: "group-model", Group: "a", BucketTs: hour - 3600, RequestCount: 1, SuccessCount: 1, TotalLatencyMs: 2000, OutputTokens: 100, GenerationMs: 1000},
+					{ModelName: "group-model", Group: "a", BucketTs: hour, RequestCount: 100, SuccessCount: 90, TotalLatencyMs: 100000, OutputTokens: 2000, GenerationMs: 100000},
+					{ModelName: "group-model", Group: "a", BucketTs: hour + 60, RequestCount: 1, TotalLatencyMs: 1000, OutputTokens: 100, GenerationMs: 10000},
+					{ModelName: "group-model", Group: "b", BucketTs: hour, RequestCount: 2, TotalLatencyMs: 10000},
+					{ModelName: "group-model", Group: "inactive", BucketTs: hour, RequestCount: 100},
+					{ModelName: "group-model", Group: "a", BucketTs: start - 3600, RequestCount: 100},
+				} {
+					require.NoError(t, model.UpsertPerfMetric(&row))
+				}
+				require.NoError(t, db.Create(&model.PerfMetric{ModelName: "group-no-data", Group: "a", BucketTs: hour}).Error)
+				for _, hot := range []struct {
+					group string
+					ts    int64
+					value counters
+				}{
+					{"a", hour + 120, counters{requestCount: 9, successCount: 9, totalLatencyMs: 9000, outputTokens: 900, generationMs: 9000}},
+					{"b", hour + 120, counters{requestCount: 1, totalLatencyMs: 2000}},
+					{"inactive", hour + 120, counters{requestCount: 100}},
+					{"a", start - 3600, counters{requestCount: 100}},
+					{"a", now.Unix() + 3600, counters{requestCount: 100}},
+				} {
+					bucket := &atomicBucket{}
+					bucket.addCounters(hot.value)
+					key := bucketKey{model: "group-model", group: hot.group, bucketTs: hot.ts}
+					hotBuckets.Store(key, bucket)
+					t.Cleanup(func() { hotBuckets.Delete(key) })
+				}
+
+				results, err := QuerySummaryGroups(start, end, []string{"b", "a", "a"})
+				require.NoError(t, err)
+				var grouped []ModelGroupSummary
+				for _, item := range results {
+					assert.NotEqual(t, "inactive", item.Group)
+					assert.NotEqual(t, "group-no-data", item.ModelName)
+					if item.ModelName == "group-model" {
+						grouped = append(grouped, item)
+					}
+				}
+				require.Len(t, grouped, 2)
+				assert.Equal(t, []ModelGroupSummary{
+					{
+						ModelName: "group-model", Group: "a", AvgLatencyMs: 1009, SuccessRate: 90.09, AvgTps: 25.83,
+						RecentSuccessSeries: []SuccessRatePoint{{Ts: hour - 3600, SuccessRate: 100}, {Ts: hour, SuccessRate: 90}},
+					},
+					{
+						ModelName: "group-model", Group: "b", AvgLatencyMs: 4000, SuccessRate: 0,
+						RecentSuccessSeries: []SuccessRatePoint{{Ts: hour, SuccessRate: 0}},
+					},
+				}, grouped)
+
+				historical, err := QuerySummaryGroups(hour-3600, hour-1, []string{"a"})
+				require.NoError(t, err)
+				assert.Equal(t, []ModelGroupSummary{{
+					ModelName: "group-model", Group: "a", AvgLatencyMs: 2000, SuccessRate: 100, AvgTps: 100,
+					RecentSuccessSeries: []SuccessRatePoint{{Ts: hour - 3600, SuccessRate: 100}},
+				}}, historical)
+
+				onlyA, err := QuerySummaryGroups(start, end, []string{"a"})
+				require.NoError(t, err)
+				for _, item := range onlyA {
+					assert.Equal(t, "a", item.Group)
+				}
+				for _, allowed := range [][]string{nil, {}} {
+					empty, err := QuerySummaryGroups(start, end, allowed)
+					require.NoError(t, err)
+					assert.Empty(t, empty)
+				}
+
+				encoded, err := common.Marshal(SummaryAllResult{GroupModels: grouped})
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), "group_models")
+				assert.NotContains(t, string(encoded), "request_count")
+				assert.NotContains(t, string(encoded), "success_count")
+			})
 
 			t.Run("recent history does not change window summaries", func(t *testing.T) {
 				for i := range 26 {

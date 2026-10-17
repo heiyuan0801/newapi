@@ -88,6 +88,14 @@ afterEach(() => {
 })
 
 describe('model cards', () => {
+  it('allows performance metrics and the Details action to wrap within narrow cards', () => {
+    render(<ModelCard model={pricingModel()} onClick={vi.fn()} />)
+    expect(
+      screen.getByLabelText('Performance metrics for the last 24 hours')
+    ).toHaveClass('flex-wrap')
+    expect(screen.getByRole('button', { name: 'Details' })).toBeVisible()
+  })
+
   it('shows separate generic and image cache prices including a free image cache', () => {
     render(
       <CachedPriceCell
@@ -634,6 +642,8 @@ describe('model cards', () => {
       .getByRole('heading', { name: 'example-model' })
       .closest('.grid')
     expect(grid).toHaveClass('xl:grid-cols-3')
+    expect(grid).toHaveClass('grid-cols-1')
+    expect(grid).toHaveClass('md:grid-cols-2')
     expect(grid).not.toHaveClass('2xl:grid-cols-3')
     expect(grid).not.toHaveClass('min-[1440px]:grid-cols-3')
   })

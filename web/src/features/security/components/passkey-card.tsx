@@ -52,12 +52,18 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatTimestampRelative } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { AuthOperationError } from '@/lib/secure-verification'
+import { cn } from '@/lib/utils'
 
 interface PasskeyCardProps {
   loading: boolean
+  presentation?: 'default' | 'compact'
 }
 
-export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
+export function PasskeyCard({
+  loading: pageLoading,
+  presentation,
+}: PasskeyCardProps) {
+  const compact = presentation === 'compact'
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -161,6 +167,102 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
     }
   }
 
+  const removeAction = (
+    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialogTrigger
+        render={
+          <Button
+            variant='destructive'
+            className={compact ? 'h-7 text-xs' : 'flex-1'}
+            disabled={removing}
+          />
+        }
+      >
+        {removing ? (
+          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+        ) : (
+          <AlertTriangle className='mr-2 h-4 w-4' />
+        )}
+        {t('Remove Passkey')}
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('Remove Passkey?')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t(
+              'Removing Passkey will require you to sign in with your password next time. You can re-register anytime.'
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={removing}>
+            {t('Cancel')}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant='destructive'
+            disabled={removing}
+            onClick={(event) => {
+              event.preventDefault()
+              handleRemove()
+            }}
+          >
+            {t('Remove')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+  const registerAction = (
+    <Button
+      variant={compact ? 'outline' : 'default'}
+      className={
+        compact
+          ? 'h-7 shrink-0 px-2.5 text-xs'
+          : 'w-full sm:w-auto xl:w-full 2xl:w-auto'
+      }
+      onClick={handleRegister}
+      disabled={!supported || registering || verification.isActive}
+    >
+      {registering && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+      {compact ? t('Bind') : t('Enable Passkey')}
+    </Button>
+  )
+
+  if (compact) {
+    return (
+      <>
+        <Card
+          data-card-hover='false'
+          className='min-h-[70px] flex-row items-center justify-between gap-3 rounded-[14px] px-4 py-3 shadow-none'
+        >
+          <div className='flex min-w-0 items-center gap-2'>
+            <div className='text-muted-foreground shrink-0 rounded-[10px] border p-2'>
+              <KeyRound className='size-4' aria-hidden='true' />
+            </div>
+            <div className='min-w-0'>
+              <CardTitle className='text-sm font-medium'>Passkey</CardTitle>
+              <CardDescription className='mt-0.5 truncate text-xs'>
+                {enabled ? t('Bound') : t('Not bound')}
+                {showUnsupportedNotice &&
+                  ` · ${t('Passkey not supported on this device')}`}
+              </CardDescription>
+            </div>
+          </div>
+          <div
+            className={cn(
+              'shrink-0',
+              enabled &&
+                '[&_button]:border [&_button]:bg-background [&_button]:text-foreground'
+            )}
+          >
+            {enabled ? removeAction : registerAction}
+          </div>
+        </Card>
+        <SecureVerificationDialog {...verification.dialogProps} />
+      </>
+    )
+  }
+
   return (
     <>
       <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
@@ -204,67 +306,12 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
                 </div>
               </div>
 
-              {!enabled && (
-                <Button
-                  className='w-full sm:w-auto xl:w-full 2xl:w-auto'
-                  onClick={handleRegister}
-                  disabled={!supported || registering || verification.isActive}
-                >
-                  {registering && (
-                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  )}
-                  {t('Enable Passkey')}
-                </Button>
-              )}
+              {!enabled && registerAction}
             </div>
 
             {enabled && (
               <div className='flex flex-col gap-3 border-t pt-6 sm:flex-row xl:flex-col 2xl:flex-row'>
-                <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-                  <AlertDialogTrigger
-                    render={
-                      <Button
-                        variant='destructive'
-                        className='flex-1'
-                        disabled={removing}
-                      />
-                    }
-                  >
-                    {removing ? (
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                    ) : (
-                      <AlertTriangle className='mr-2 h-4 w-4' />
-                    )}
-                    {t('Remove Passkey')}
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        {t('Remove Passkey?')}
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {t(
-                          'Removing Passkey will require you to sign in with your password next time. You can re-register anytime.'
-                        )}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel disabled={removing}>
-                        {t('Cancel')}
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        variant='destructive'
-                        disabled={removing}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          handleRemove()
-                        }}
-                      >
-                        {t('Remove')}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                {removeAction}
               </div>
             )}
 

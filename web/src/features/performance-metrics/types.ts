@@ -64,6 +64,10 @@ export type PerfModelSummary = {
   request_count?: number
 }
 
+export type PerfModelGroupSummary = Omit<PerfModelSummary, 'request_count'> & {
+  group: string
+}
+
 export type PerfSummaryAllData = {
   success: boolean
   message?: string
@@ -72,6 +76,7 @@ export type PerfSummaryAllData = {
     window_start?: number
     window_end?: number
     models: PerfModelSummary[]
+    group_models?: PerfModelGroupSummary[]
     recent_success_series?: Record<string, SuccessRatePoint[]>
   }
 }

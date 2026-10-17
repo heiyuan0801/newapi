@@ -31,30 +31,37 @@ export function SignUp() {
 
   return (
     <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
-            {t('Create an account')}
-          </h2>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {t('Already have an account?')}{' '}
-            <Link
-              to='/sign-in'
-              className='hover:text-primary font-medium underline underline-offset-4'
-            >
-              {t('Sign in')}
-            </Link>
-            .
+      <div className='flex w-full flex-col gap-7'>
+        <div className='flex flex-col items-center gap-4 text-center'>
+          <span className='bg-muted rounded-full px-3.5 py-1.5 text-xs font-medium'>
+            {t('Sign up for an account')}
+          </span>
+          <h1 className='text-3xl font-semibold tracking-tight'>
+            {t('Create your account')}
+          </h1>
+          <p className='text-muted-foreground text-sm leading-6'>
+            {t('One account. A world of AI possibilities.')}
           </p>
         </div>
 
         <SignUpForm />
 
-        <TermsFooter
-          variant='sign-up'
-          status={status}
-          className='text-center'
-        />
+        <div className='flex flex-col gap-5'>
+          <p className='text-muted-foreground text-center text-sm'>
+            {t('Already have an account?')}{' '}
+            <Link
+              to='/sign-in'
+              className='text-foreground font-medium underline underline-offset-4 hover:opacity-70'
+            >
+              {t('Sign in')}
+            </Link>
+          </p>
+          <TermsFooter
+            variant='sign-up'
+            status={status}
+            className='text-center leading-5'
+          />
+        </div>
       </div>
     </AuthLayout>
   )
