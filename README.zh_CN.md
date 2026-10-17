@@ -100,6 +100,37 @@
 
 ---
 
+## 定制版本 P0 验收与恢复
+
+权限检查覆盖未登录、普通用户、管理员会话和不同作用域的个人访问令牌（PAT）。模型监控只读接口要求 `usage:read`，月报与奖励明细要求 `wallet:read`；工单操作限定登录会话，手动探测同时要求管理员权限。资源归属仍由后端检查，不能通过修改工单 ID、用户 ID 或分组绕过。权限设计参考 OWASP [Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html) 指南；这不代表全站安全认证。
+
+`.github/workflows/ci.yml` 在 PR、推送 `main` 和手动触发时运行 Go vet/build、三个独立 Go 模块测试、前端类型检查/测试/构建、变更文件 lint、真实三数据库迁移和恢复演练。全仓库 lint 的既有问题尚未整体清理，因此 CI 的 lint 范围为本次提交变更的前端文件，不表示历史代码全量 lint 已通过。
+
+迁移基线固定为上游发布版 `v1.0.0-rc.44`（`633b4c5b190dc1af99a2814391354d86948e7943`）。后续上游升级需同步更新并验证基线。`tools/dbcheck/run.py` 仅接受 `new_api_ci_*` 的独立 MySQL/PostgreSQL 测试库，拒绝非空库；分别验证首次建库、发布版数据升级及两次启动，检查原有行、凭据哈希、索引和新增表约束。CI 的数据库版本由服务镜像主版本指定，验收记录应同时保存实际版本。
+
+### 固定二进制发布与恢复
+
+`tools/ops/release.py` 适用于 Linux/macOS、Python 3.11+、单实例、Redis 关闭且 `BATCH_UPDATE_ENABLED=false` 的维护配置；配置必须明确声明 `redis_enabled=false`、`multi_instance=false`。健康检查也会拒绝开启批量写入的实例。这是当前已演练的自动恢复边界。Redis、多实例、ClickHouse 或其他外部持久化资源需要单独完成协同停机、缓存清理及原生备份恢复流程，不能直接套用此配置。新版正常停机额外刷写待保存额度，但不代替数据库故障或强制终止下的资金一致性保障。
+
+将 `tools/ops/instance.example.json` 复制到仓库外的私有配置文件，按真实实例填写绝对路径，执行 `chmod 600`。`stop_command` 必须停止全部写入进程；工具还会检查本地端口确已停止监听。服务管理器必须允许 SIGTERM 排空请求（默认最长 120 秒），禁止在备份期间自动拉起实例。配置与备份都含敏感数据，应保存在受控目录，并按运营策略加密、异地保留和定期演练。
+
+SQLite 使用 backup API 与完整性检查，备份独立于 WAL/SHM。MySQL/PostgreSQL 使用原生客户端备份及恢复；独立日志库必须在 `databases` 中另列，例如 `logs`。MySQL 配置示例为 `{"engine":"mysql","database":"new_api","dedicated":true,"defaults_file":"/etc/new-api/mysql.cnf"}`；PostgreSQL 为 `{"engine":"postgres","database":"new_api","dedicated":true,"env":{"PGHOST":"127.0.0.1","PGPORT":"5432","PGUSER":"new_api","PGPASSFILE":"/etc/new-api/pgpass"}}`。凭据文件权限设为 600，原生工具须在 PATH 中；恢复账号需要重建专属数据库的权限。当前 MySQL 重建库默认使用 `utf8mb4_unicode_ci`，PostgreSQL 使用服务器默认建库参数；非默认字符集、排序规则或自定义所有权的实例须先适配并演练后使用。
+
+以下命令从仓库根目录运行，示例路径与版本需替换为实际值。候选二进制应由已验收源码构建，明确嵌入版本号，并从可信构建结果获取 SHA-256；不使用漂移的 `latest` 作为恢复点。
+
+```bash
+python3 tools/ops/release.py backup --config /etc/new-api/ops.json --confirm-instance new-api
+python3 tools/ops/release.py verify --config /etc/new-api/ops.json --backup /var/backups/new-api/BACKUP_ID
+python3 tools/ops/release.py upgrade --config /etc/new-api/ops.json --confirm-instance new-api --candidate /opt/releases/new-api-VERSION --version VERSION --sha256 SHA256
+python3 tools/ops/release.py restore --config /etc/new-api/ops.json --confirm-instance new-api --backup /var/backups/new-api/BACKUP_ID
+```
+
+每次升级先停止写入、备份并校验文件清单与哈希，再原子替换程序，验证精确版本、HTTP 状态和数据库可读性。失败自动恢复数据库、程序、配置和上传文件；恢复同时保留服务文件的所有者及权限。主动恢复前另留当前状态的安全备份。恢复会回退备份时间之后的数据，维护窗口必须先摘除外部流量，再验收账号、余额、令牌与业务页面，确认后才重新接流量；自动恢复失败时保留维护状态及备份，交由值班人员处理。
+
+本地验收命令：`python3 -m unittest discover -s tools/ops -p 'test_*.py' -v`；设置隔离数据库 DSN 后执行 `python3 tools/ops/drill.py --output /ABSOLUTE/NEW_DRILL_DIRECTORY`。演练使用合成账号和不可达的本地上游地址，不发送付费请求；会检查成功升级、故障注入回滚、主动恢复，以及 SQLite/MySQL/PostgreSQL 数据保留。
+
+---
+
 ## 📝 项目说明
 
 New API 是面向应用、Agent 和团队的自托管 AI 网关。将不同厂商的模型服务接入统一入口，在同一套控制台中管理渠道、访问权限、用量与成本。

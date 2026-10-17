@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
+  workflow_dispatch:
   pull_request:
     types: [opened, synchronize, closed]
 
@@ -26,7 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: ${{ github.event.pull_request.base.repo.full_name }}
+          repository: ${{ github.event.pull_request.base.repo.full_name || github.repository }}
           ref: ${{ github.sha }}
 
       - name: Set up Go
@@ -69,7 +72,7 @@ jobs:
         run: make test
 
   frontend:
-    name: Frontend typecheck and test
+    name: Frontend typecheck, test, and production build
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -81,8 +84,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: ${{ github.event.pull_request.base.repo.full_name }}
+          repository: ${{ github.event.pull_request.base.repo.full_name || github.repository }}
           ref: ${{ github.sha }}
+          fetch-depth: 0
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -95,5 +99,107 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Lint changed frontend files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          base = os.environ.get('BASE_SHA', '')
+          if not base or set(base) == {'0'}:
+              base = subprocess.check_output(['git', 'rev-parse', 'HEAD^'], text=True).strip()
+          names = subprocess.check_output(['git', 'diff', '--name-only', '-z', base, 'HEAD', '--', 'web/'], cwd='..').decode().split('\0')
+          files = [name.removeprefix('web/') for name in names if name.startswith('web/') and pathlib.Path(name.removeprefix('web/')).is_file() and pathlib.Path(name).suffix in {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'}]
+          if files:
+              subprocess.run(['bun', 'x', 'oxlint', '-c', '.oxlintrc.json', '--', *files], check=True)
+          PY
+
       - name: Test
         run: bun run test
+
+      - name: Production build
+        run: bun run build
+
+  database:
+    name: Real database migrations and feature contracts
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-password-not-production
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-test-password-not-production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      GOWORK: 'off'
+      MYSQL_PWD: ci-test-password-not-production
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: ci-test-password-not-production
+      TEST_MYSQL_DSN: root:ci-test-password-not-production@tcp(127.0.0.1:3306)/new_api_ci_behavior?charset=utf8mb4&parseTime=true
+      TEST_MYSQL_FRESH_DSN: root:ci-test-password-not-production@tcp(127.0.0.1:3306)/new_api_ci_fresh?charset=utf8mb4&parseTime=true
+      TEST_MYSQL_UPGRADE_DSN: root:ci-test-password-not-production@tcp(127.0.0.1:3306)/new_api_ci_upgrade?charset=utf8mb4&parseTime=true
+      TEST_POSTGRES_DSN: postgres://postgres:ci-test-password-not-production@127.0.0.1:5432/new_api_ci_behavior?sslmode=disable
+      TEST_POSTGRES_FRESH_DSN: postgres://postgres:ci-test-password-not-production@127.0.0.1:5432/new_api_ci_fresh?sslmode=disable
+      TEST_POSTGRES_UPGRADE_DSN: postgres://postgres:ci-test-password-not-production@127.0.0.1:5432/new_api_ci_upgrade?sslmode=disable
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+      - name: Check out published migration baseline
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: QuantumNous/new-api
+          ref: 633b4c5b190dc1af99a2814391354d86948e7943 # v1.0.0-rc.44
+          path: .ci-baseline
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - name: Install native database clients
+        run: sudo apt-get update && sudo apt-get install -y mysql-client postgresql-client
+      - name: Prepare API-only embed for the recovery drill
+        run: |
+          mkdir -p web/dist
+          touch web/dist/index.html
+      - name: Create dedicated disposable databases
+        run: |
+          for name in new_api_ci_behavior new_api_ci_fresh new_api_ci_upgrade; do
+            mysql -h 127.0.0.1 -u root -e "CREATE DATABASE $name CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            createdb "$name"
+          done
+      - name: Verify all three database migrations
+        run: |
+          for engine in sqlite mysql postgres; do
+            python3 tools/dbcheck/run.py --engine "$engine" --baseline-root .ci-baseline --output "$RUNNER_TEMP/dbcheck/$engine"
+          done
+      - name: Verify database-dependent feature behavior without skipped engines
+        run: |
+          go test ./model -run 'TestTokenBudgetDatabaseMatrix' -count=1 -v
+          go test ./controller -run 'TestAvailabilityPersistenceDatabaseMatrix|TestSupportTicketWorkflowDatabaseMatrix|TestWalletReportsDatabaseMatrix' -count=1 -v
+      - name: Recovery tool tests and real database restore drill
+        run: |
+          python3 -m unittest discover -s tools/ops -p 'test_*.py' -v
+          python3 tools/ops/drill.py --output "$RUNNER_TEMP/recovery-drill"
+      - name: Upload non-secret validation results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: p0-database-and-recovery-results
+          path: |
+            ${{ runner.temp }}/dbcheck/*/result.json
+            ${{ runner.temp }}/recovery-drill/result.json
+          if-no-files-found: ignore

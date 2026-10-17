@@ -1,0 +1,17 @@
+{
+  "instance": "new-api",
+  "redis_enabled": false,
+  "multi_instance": false,
+  "binary": "/opt/new-api/new-api",
+  "backup_dir": "/var/backups/new-api",
+  "health_url": "http://127.0.0.1:3000/api/status",
+  "health_timeout_seconds": 60,
+  "stop_timeout_seconds": 150,
+  "stop_command": ["systemctl", "stop", "new-api"],
+  "start_command": ["systemctl", "start", "new-api"],
+  "databases": {
+    "main": {"engine": "sqlite", "path": "/opt/new-api/data/one-api.db"}
+  },
+  "data_dirs": {"uploads": "/opt/new-api/upload"},
+  "config_files": {"environment": "/etc/new-api/production.env"}
+}

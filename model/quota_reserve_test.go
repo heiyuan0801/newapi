@@ -154,6 +154,28 @@ func TestBatchUpdateAccumulatesTwoMaximumRequestCharges(t *testing.T) {
 	assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
 }
 
+func TestShutdownFlushPersistsQueuedQuotaExactlyOnce(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	common.BatchUpdateEnabled = true
+	user := createReserveTestUser(t, 100)
+	token := createReserveTestToken(t, 80)
+	addNewRecord(BatchUpdateTypeUserQuota, user.Id, -30)
+	addNewRecord(BatchUpdateTypeTokenQuota, token.Id, -30)
+	addNewRecord(BatchUpdateTypeUsedQuota, user.Id, 30)
+	addNewRecord(BatchUpdateTypeRequestCount, user.Id, 1)
+	assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+	FlushBatchUpdates()
+	FlushBatchUpdates()
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 70, reloaded.Quota)
+	assert.Equal(t, 30, reloaded.UsedQuota)
+	assert.Equal(t, 1, reloaded.RequestCount)
+	assert.Equal(t, 50, getTokenFromDB(t, token.Id).RemainQuota)
+	assert.Equal(t, 30, getTokenFromDB(t, token.Id).UsedQuota)
+}
+
 func TestBatchUpdateAccumulatorSaturatesOverflow(t *testing.T) {
 	resetBatchUpdateTestState(t)
 

@@ -23,6 +23,13 @@ const (
 
 var batchUpdateStores []map[int]int
 var batchUpdateLocks []sync.Mutex
+var batchFlushLock sync.Mutex
+
+// FlushBatchUpdates drains queued quota deltas after request writers have stopped.
+// Serialize with the periodic updater so shutdown waits for an in-flight flush.
+func FlushBatchUpdates() {
+	batchUpdate()
+}
 
 func init() {
 	for range BatchUpdateTypeCount {
@@ -62,6 +69,8 @@ func addNewRecord(type_ int, id int, value int) {
 }
 
 func batchUpdate() {
+	batchFlushLock.Lock()
+	defer batchFlushLock.Unlock()
 	// check if there's any data to update
 	hasData := false
 	for i := range BatchUpdateTypeCount {

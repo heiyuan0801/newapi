@@ -93,3 +93,15 @@ const (
 	MsgChannelUpstreamUpdateFailedChannels  = "channel.upstream_update_failed_channels"
 	MsgChannelUpstreamUpdateMoreOmitted     = "channel.upstream_update_more_omitted"
 )
+
+// Availability incidents and opt-in token budget notifications.
+const (
+	MsgAvailabilityFaultSubject    = "availability.fault_subject"
+	MsgAvailabilityFaultContent    = "availability.fault_content"
+	MsgAvailabilityRecoverySubject = "availability.recovery_subject"
+	MsgAvailabilityRecoveryContent = "availability.recovery_content"
+	MsgTokenBudgetTitle            = "notify.token_budget_title"
+	MsgTokenBudgetDaily            = "notify.token_budget_daily"
+	MsgTokenBudgetMonthly          = "notify.token_budget_monthly"
+	MsgTokenBudgetExhausted        = "quota.token_budget_exhausted"
+)

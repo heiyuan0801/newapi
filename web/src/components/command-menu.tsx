@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
+import { ArrowRight, Laptop, Moon, Sun } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -64,7 +64,7 @@ export function CommandMenu() {
             {navGroups.map((group) => (
               <CommandGroup key={group.id || group.title} heading={group.title}>
                 {group.items.map((navItem) => {
-                  if (navItem.url) {
+                  if (navItem.url && navItem.url !== '#') {
                     return (
                       <CommandItem
                         key={`${navItem.title}-${navItem.url}`}
@@ -84,7 +84,7 @@ export function CommandMenu() {
                   return navItem.items?.map((subItem) => (
                     <CommandItem
                       key={`${navItem.title}-${subItem.url}`}
-                      value={`${navItem.title}-${subItem.url}`}
+                      value={`${navItem.title} ${subItem.title}`}
                       onSelect={() => {
                         runCommand(() => navigate({ to: subItem.url }))
                       }}
@@ -92,7 +92,7 @@ export function CommandMenu() {
                       <div className='flex size-4 items-center justify-center'>
                         <ArrowRight className='text-muted-foreground/80 size-2' />
                       </div>
-                      {navItem.title} <ChevronRight /> {subItem.title}
+                      {subItem.title}
                     </CommandItem>
                   ))
                 })}

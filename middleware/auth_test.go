@@ -304,6 +304,83 @@ func middlewareBearerRequest(router *gin.Engine, path, token string) *httptest.R
 	return response
 }
 
+// New account tools must declare a narrow PAT scope or require a browser session.
+func TestAccountToolsAuthenticationPolicy(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	gin.SetMode(gin.TestMode)
+	user := createMiddlewarePATUser(t, "tools-user", "tools-legacy-user")
+	admin := createMiddlewarePATUser(t, "tools-admin", "tools-legacy-admin")
+	require.NoError(t, model.DB.Model(admin).Update("role", common.RoleAdminUser).Error)
+	usage, _ := createMiddlewareScopedToken(t, user.Id, 0, "usage:read")
+	wallet, _ := createMiddlewareScopedToken(t, user.Id, 0, "wallet:read")
+	adminPAT, _ := createMiddlewareScopedToken(t, admin.Id, 0, "ops:write", "usage:read", "wallet:write")
+	sessionToken := func(account *model.User, sid string) string {
+		now := time.Now().Unix()
+		session := &model.UserSession{SID: sid, UserID: account.Id, Version: 1, UserAuthVersion: account.AuthVersion, Status: model.UserSessionStatusActive, RefreshHash: sid + "-hash", LoginMethod: "password", LastActiveAt: now, ExpiresAt: now + 3600}
+		require.NoError(t, model.CreateUserSession(session))
+		token, _, err := service.IssueAccessToken(service.AuthIdentity{UserID: account.Id, SessionID: sid, UserAuthVersion: account.AuthVersion, SessionVersion: 1})
+		require.NoError(t, err)
+		return token
+	}
+	userSession := sessionToken(user, "tools-session-user")
+	adminSession := sessionToken(admin, "tools-session-admin")
+	routes := []struct {
+		method, path, target, scope string
+		admin                       bool
+	}{
+		{"GET", "/api/model-availability/monitor", "/api/model-availability/monitor", "usage", false},
+		{"GET", "/api/model-availability/probes", "/api/model-availability/probes", "usage", false},
+		{"GET", "/api/model-availability/incidents", "/api/model-availability/incidents", "usage", false},
+		{"GET", "/api/user/aff/rewards", "/api/user/aff/rewards", "wallet", false},
+		{"GET", "/api/user/wallet/monthly", "/api/user/wallet/monthly", "wallet", false},
+		{"GET", "/api/support-tickets", "/api/support-tickets", "session", false},
+		{"POST", "/api/support-tickets", "/api/support-tickets", "session", false},
+		{"GET", "/api/support-tickets/:id", "/api/support-tickets/7", "session", false},
+		{"PATCH", "/api/support-tickets/:id", "/api/support-tickets/7", "session", false},
+		{"POST", "/api/support-tickets/:id/replies", "/api/support-tickets/7/replies", "session", false},
+		{"POST", "/api/model-availability/probe", "/api/model-availability/probe", "session", true},
+	}
+	for _, route := range routes {
+		t.Run(route.method+route.path, func(t *testing.T) {
+			engine := gin.New()
+			guard := UserAuth()
+			if route.admin {
+				guard = AdminAuth()
+			}
+			engine.Handle(route.method, route.path, guard, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			for _, credential := range []struct {
+				name, token string
+				want        int
+			}{
+				{"anonymous", "", http.StatusUnauthorized},
+				{"usage", usage, http.StatusForbidden},
+				{"wallet", wallet, http.StatusForbidden},
+				{"admin-pat", adminPAT, http.StatusForbidden},
+				{"user-session", userSession, http.StatusNoContent},
+				{"admin-session", adminSession, http.StatusNoContent},
+			} {
+				want := credential.want
+				if route.scope == credential.name {
+					want = http.StatusNoContent
+				}
+				if route.scope == "usage" && credential.name == "admin-pat" {
+					want = http.StatusNoContent
+				}
+				if route.admin && credential.name == "user-session" {
+					want = http.StatusForbidden
+				}
+				request := httptest.NewRequest(route.method, route.target, nil)
+				if credential.token != "" {
+					request.Header.Set("Authorization", "Bearer "+credential.token)
+				}
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				assert.Equal(t, want, recorder.Code, route.method+route.path+" "+credential.name)
+			}
+		})
+	}
+}
+
 func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	gin.SetMode(gin.TestMode)
