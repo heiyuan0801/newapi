@@ -218,9 +218,30 @@ jobs:
           done
       - name: Verify database-dependent feature behavior without skipped engines
         run: |
-          go test ./model -run 'TestTokenBudgetDatabaseMatrix' -count=1 -v
-          go test ./controller -run 'TestAvailabilityPersistenceDatabaseMatrix|TestAvailabilityDiagnosticsPrivilegesAndAggregation|TestSupportTicketWorkflowDatabaseMatrix|TestWalletReportsDatabaseMatrix|TestMonthlyWalletExportGuards' -count=1 -v
-          go test ./service -run 'TestNotificationDeliveryDatabaseMatrix|TestNotificationHTTPTransportHonorsCancellation' -count=1 -race -v
+          verify_feature() {
+            local log_file="$RUNNER_TEMP/feature-$1.log"
+            shift
+            if "$@" > "$log_file" 2>&1; then
+              cat "$log_file"
+            else
+              cat "$log_file"
+              python3 - "$log_file" <<'PY'
+          import pathlib, re, sys
+          lines = pathlib.Path(sys.argv[1]).read_text(errors='replace').splitlines()
+          selected = set()
+          for index, line in enumerate(lines):
+              if re.search(r'--- FAIL:|Error Trace:|Error:|panic:|signal:|^FAIL', line):
+                  selected.update(range(max(0, index - 2), min(len(lines), index + 12)))
+          excerpt = '\n'.join(lines[index] for index in sorted(selected)) if selected else '\n'.join(lines[-60:])
+          excerpt = excerpt[:24000].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Database feature test failure::{excerpt}')
+          PY
+              return 1
+            fi
+          }
+          verify_feature model go test ./model -run 'TestTokenBudgetDatabaseMatrix' -count=1 -v
+          verify_feature controller go test ./controller -run 'TestAvailabilityPersistenceDatabaseMatrix|TestAvailabilityDiagnosticsPrivilegesAndAggregation|TestSupportTicketWorkflowDatabaseMatrix|TestWalletReportsDatabaseMatrix|TestMonthlyWalletExportGuards' -count=1 -v
+          verify_feature service go test ./service -run 'TestNotificationDeliveryDatabaseMatrix|TestNotificationHTTPTransportHonorsCancellation' -count=1 -race -v
       - name: Recovery tool tests and real database restore drill
         run: |
           python3 -m unittest discover -s tools/ops -p 'test_*.py' -v
@@ -233,4 +254,5 @@ jobs:
           path: |
             ${{ runner.temp }}/dbcheck/*/result.json
             ${{ runner.temp }}/recovery-drill/result.json
+            ${{ runner.temp }}/feature-*.log
           if-no-files-found: ignore
