@@ -26,6 +26,8 @@ import {
 } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
+import { getPlaygroundTestGroup } from '@/features/playground/lib/launch'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import { parseTags } from '../lib/filters'
@@ -38,7 +40,9 @@ import { ModelPriceCell, type ModelPriceCellOptions } from './model-price-cell'
 // Pricing Table Columns
 // ----------------------------------------------------------------------------
 
-export type PricingColumnsOptions = ModelPriceCellOptions
+export type PricingColumnsOptions = ModelPriceCellOptions & {
+  onTest?: (modelName: string, group: string) => void
+}
 
 export function usePricingColumns(
   options: PricingColumnsOptions = {}
@@ -46,6 +50,34 @@ export function usePricingColumns(
   const { t } = useTranslation()
 
   return [
+    ...(options.onTest
+      ? [
+          {
+            id: 'test_model',
+            header: t('Test model'),
+            cell: ({ row }: { row: { original: PricingModel } }) => {
+              const group = getPlaygroundTestGroup(
+                row.original,
+                options.selectedGroup
+              )
+              return group ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    options.onTest?.(row.original.model_name, group)
+                  }}
+                >
+                  {t('Test model')}
+                </Button>
+              ) : null
+            },
+            enableSorting: false,
+            size: 105,
+          },
+        ]
+      : []),
     // Model column
     {
       accessorKey: 'model_name',

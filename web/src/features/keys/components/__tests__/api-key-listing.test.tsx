@@ -184,7 +184,7 @@ it('shows unlimited with cumulative usage and explains it on demand', async () =
   const detail = await screen.findByRole('dialog')
   expect(within(detail).getByText('120')).toBeInTheDocument()
   expect(detail).toHaveTextContent(
-    'This API key has no quota limit. Requests still require available wallet or subscription quota.'
+    'This API key has no lifetime quota limit. Periodic budgets and wallet or subscription quota still apply.'
   )
 })
 
@@ -580,4 +580,30 @@ it('keeps mobile quota readable and opens complete model and IP restrictions by 
   details = await screen.findByRole('dialog')
   expect(within(details).getByText('192.0.2.1')).toBeVisible()
   expect(within(details).getByText('2001:db8::1')).toBeVisible()
+})
+
+it('shows a paused periodic budget on an unlimited key and exposes usage plus UTC reset details', async () => {
+  const user = userEvent.setup()
+  renderQuota({
+    ...key,
+    unlimited_quota: true,
+    daily_budget: 5_000_000,
+    daily_budget_used: 5_500_000,
+    monthly_budget: 50_000_000,
+    monthly_budget_used: 10_000_000,
+    budget_paused: true,
+  })
+  expect(screen.getByText('Budget paused')).toBeInTheDocument()
+  expect(
+    screen.getByRole('progressbar', { name: 'Budget usage' })
+  ).toHaveAttribute('aria-valuenow', '100')
+  await user.click(
+    screen.getByRole('button', { name: 'View spending budgets' })
+  )
+  const detail = await screen.findByRole('dialog')
+  expect(within(detail).getByText('Daily budget')).toBeInTheDocument()
+  expect(within(detail).getByText('$11 / $10')).toBeInTheDocument()
+  expect(within(detail).getByText('Monthly budget')).toBeInTheDocument()
+  expect(detail).toHaveTextContent('00:00 UTC')
+  expect(detail).toHaveTextContent('in-flight reservations')
 })

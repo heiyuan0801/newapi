@@ -88,6 +88,36 @@ afterEach(() => {
 })
 
 describe('model cards', () => {
+  it('launches testing for the filtered model group without invoking Details', async () => {
+    const onTest = vi.fn()
+    const onClick = vi.fn()
+    render(
+      <ModelCard
+        model={pricingModel()}
+        selectedGroup='premium'
+        onTest={onTest}
+        onClick={onClick}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Test model' }))
+    expect(onTest).toHaveBeenCalledWith('example-model', 'premium')
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('does not offer chat testing for an image-only model', () => {
+    render(
+      <ModelCard
+        model={pricingModel({ supported_endpoint_types: ['image-generation'] })}
+        onTest={vi.fn()}
+        onClick={vi.fn()}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Test model' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Details' })).toBeVisible()
+  })
+
   it('allows performance metrics and the Details action to wrap within narrow cards', () => {
     render(<ModelCard model={pricingModel()} onClick={vi.fn()} />)
     expect(

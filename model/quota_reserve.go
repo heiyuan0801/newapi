@@ -199,7 +199,25 @@ func TryReserveUserQuota(id int, quota int) (bool, error) {
 
 // TryReserveTokenQuota atomically checks and deducts a token quota. Unlimited
 // tokens skip the balance check but still update remain/used accounting.
-func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, error) {
+func TryReserveTokenQuota(id int, key string, quota int, unlimited bool, startedAt ...int64) (bool, error) {
+	if quota < 0 {
+		return false, errors.New("quota cannot be negative")
+	}
+	at := tokenBudgetTimestamp(startedAt)
+	handled, err := applyTokenBudgetDelta(id, int64(quota), at, true)
+	if err != nil {
+		return false, err
+	}
+	reserved, reserveErr := tryReserveTokenQuotaAccounting(id, key, quota, unlimited)
+	if handled && (!reserved || reserveErr != nil) {
+		if _, refundErr := applyTokenBudgetDelta(id, -int64(quota), at, false); refundErr != nil {
+			return false, errors.Join(reserveErr, refundErr)
+		}
+	}
+	return reserved, reserveErr
+}
+
+func tryReserveTokenQuotaAccounting(id int, key string, quota int, unlimited bool) (bool, error) {
 	if quota < 0 {
 		return false, errors.New("quota cannot be negative")
 	}
@@ -207,7 +225,7 @@ func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, 
 		return true, nil
 	}
 	if unlimited {
-		return true, DecreaseTokenQuota(id, key, quota)
+		return true, decreaseTokenQuotaAccounting(id, key, quota)
 	}
 	if !common.RedisEnabled {
 		return reserveTokenQuotaDB(id, quota)

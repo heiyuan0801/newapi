@@ -357,7 +357,28 @@ export type BillingSettings = {
   'checkin_setting.max_quota': number
 }
 
-export type OperationsSettings = {
+export type AvailabilityMonitoringSettings = {
+  'availability_setting.probe_enabled': boolean
+  'availability_setting.probe_interval_minutes': number
+  'availability_setting.probe_timeout_seconds': number
+  'availability_setting.probe_concurrency': number
+  'availability_setting.probe_models': string[]
+  'availability_setting.probe_groups': string[]
+  'availability_setting.probe_all_models': boolean
+  'availability_setting.probe_all_groups': boolean
+  'availability_setting.probe_max_pairs': number
+  'availability_setting.alerts_enabled': boolean
+  'availability_setting.success_rate_threshold': number
+  'availability_setting.minimum_samples': number
+  'availability_setting.evaluation_window_minutes': number
+  'availability_setting.failure_threshold': number
+  'availability_setting.recovery_threshold': number
+  'availability_setting.notification_cooldown_minutes': number
+  'availability_setting.silence_until': number
+  'availability_setting.retention_days': number
+}
+
+export type OperationsSettings = AvailabilityMonitoringSettings & {
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean

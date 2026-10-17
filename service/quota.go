@@ -146,10 +146,44 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
 
-	err = PostConsumeQuota(relayInfo, quota, 0, false)
-	if err != nil {
+	// Each usage cycle reserves in the current server period. Keep only this
+	// cycle's billing copy and stamp local, so refund cannot use another cycle.
+	originalInfo := relayInfo
+	cycleInfo := *relayInfo
+	cycleInfo.TokenBudgetStartedAt = common.GetTimestamp()
+	relayInfo = &cycleInfo
+	subscriptionDeltaBefore := relayInfo.SubscriptionPostDelta
+	if err = PreConsumeTokenQuota(relayInfo, quota); err != nil {
 		return err
 	}
+	result, consumeErr := postConsumeQuotaWithResult(relayInfo, quota, 0, false, true)
+	if consumeErr != nil {
+		if !result.FundingApplied && !relayInfo.IsPlayground {
+			if refundErr := model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, tokenBudgetStartedAt(relayInfo)); refundErr != nil {
+				return errors.Join(consumeErr, refundErr)
+			}
+		}
+		return consumeErr
+	}
+	// Cycle payments are advances against the final aggregate usage, not
+	// additional consumption. Without this credit the closing settlement
+	// charges every completed cycle a second time.
+	var creditErr error
+	if session, ok := originalInfo.Billing.(*BillingSession); ok {
+		creditErr = session.recordRealtimePrepayment(quota)
+	} else if originalInfo.Billing == nil {
+		if quota > common.MaxWalletQuota-originalInfo.FinalPreConsumedQuota {
+			creditErr = errors.New("realtime prepayment exceeds the supported range")
+		} else {
+			originalInfo.FinalPreConsumedQuota += quota
+		}
+	}
+	if creditErr != nil {
+		rollbackErr := PostConsumeQuota(relayInfo, -quota, 0, false)
+		return errors.Join(creditErr, rollbackErr)
+	}
+	originalInfo.SubscriptionPostDelta += relayInfo.SubscriptionPostDelta - subscriptionDeltaBefore
+	checkAndSendTokenBudgetNotify(relayInfo)
 	logger.LogInfo(ctx, common.LogText("realtime streaming consume quota success, quota: %d", quota))
 	return nil
 }
@@ -410,8 +444,14 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 	if relayInfo.IsPlayground {
 		return nil
 	}
+	if quota > 0 && relayInfo.TokenBudgetStartedAt == 0 {
+		relayInfo.TokenBudgetStartedAt = common.GetTimestamp()
+	}
 	// 原子预扣：检查与扣减在同一操作中完成，并发请求不可能同时通过检查后超扣。
-	reserved, err := model.TryReserveTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, relayInfo.TokenUnlimited)
+	reserved, err := model.TryReserveTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, relayInfo.TokenUnlimited, tokenBudgetStartedAt(relayInfo))
+	if errors.Is(err, model.ErrTokenBudgetExceeded) {
+		return errors.New(i18n.Translate(relayInfo.UserSetting.Language, "quota.token_budget_exhausted"))
+	}
 	if err != nil {
 		return err
 	}
@@ -435,7 +475,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	return err
 }
 
-func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
+func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool, tokenPreReserved ...bool) (result postConsumeQuotaResult, err error) {
 
 	// 1) Consume from wallet quota OR subscription item
 	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
@@ -462,16 +502,19 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 	}
 	result.FundingApplied = true
 
-	if !relayInfo.IsPlayground {
+	if !relayInfo.IsPlayground && (len(tokenPreReserved) == 0 || !tokenPreReserved[0]) {
 		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, tokenBudgetStartedAt(relayInfo))
 		} else {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
+			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota, tokenBudgetStartedAt(relayInfo))
 		}
 		if err != nil {
 			return result, err
 		}
 		result.TokenApplied = true
+		if quota > 0 {
+			checkAndSendTokenBudgetNotify(relayInfo)
+		}
 	}
 
 	if sendEmail {

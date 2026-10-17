@@ -622,6 +622,7 @@ func executeTaskSubmissionWith(
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 	task.PrivateData.TokenId = relayInfo.TokenId
+	task.PrivateData.TokenBudgetStartedAt = relayInfo.TokenBudgetStartedAt
 	task.PrivateData.NodeName = common.NodeName
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
 		ModelPrice:      relayInfo.PriceData.ModelPrice,

@@ -28,6 +28,7 @@ import type { GroupOption, ModelOption } from '../../types'
 
 type PlaygroundInputControlsProps = {
   disabled?: boolean
+  canSend?: boolean
   groups: GroupOption[]
   groupValue: string
   isGenerating?: boolean
@@ -43,6 +44,7 @@ type PlaygroundInputControlsProps = {
 
 export function PlaygroundInputControls({
   disabled,
+  canSend = true,
   groups,
   groupValue,
   isGenerating,
@@ -93,7 +95,7 @@ export function PlaygroundInputControls({
     ) : (
       <PromptInputButton
         className='bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground h-8 px-3 font-medium shadow-sm'
-        disabled={!canSubmit}
+        disabled={!canSubmit || !canSend}
         type='submit'
         variant='default'
       >

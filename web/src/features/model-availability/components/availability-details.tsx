@@ -50,6 +50,11 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import {
+  getAvailabilityMonitor,
+  getProbeMetrics,
+  type AvailabilitySource,
+} from '../api'
+import {
   formatSuccessRate,
   getAvailabilityStatus,
   type AvailabilityCatalogModel,
@@ -60,6 +65,7 @@ type AvailabilityDetailsProps = {
   model: AvailabilityCatalogModel | null
   group: string
   hours: 24 | 168
+  source?: AvailabilitySource
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -67,6 +73,7 @@ type AvailabilityDetailsProps = {
 export function AvailabilityDetails(props: AvailabilityDetailsProps) {
   const { t, i18n } = useTranslation()
   const modelName = props.model?.model_name ?? ''
+  const isProbe = props.source === 'probe'
   const metrics = useQuery({
     queryKey: [
       'model-availability',
@@ -74,21 +81,36 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
       modelName,
       props.hours,
       props.group,
+      isProbe ? 'probe' : 'real',
     ],
     queryFn: async () =>
       requireServerSuccess(
-        await getPerfMetrics(modelName, props.hours, props.group)
+        isProbe
+          ? await getProbeMetrics(modelName, props.group, props.hours)
+          : await getPerfMetrics(modelName, props.hours, props.group)
       ),
     enabled: props.open && Boolean(modelName),
     staleTime: 60 * 1000,
     meta: { errorToast: false },
   })
   const hourly = useQuery({
-    queryKey: ['model-availability-summary', props.hours],
-    queryFn: async () =>
-      requireServerSuccess(
+    queryKey: [
+      isProbe
+        ? 'model-availability-probe-summary'
+        : 'model-availability-summary',
+      props.hours,
+    ],
+    queryFn: async () => {
+      if (isProbe) {
+        const result = requireServerSuccess(
+          await getAvailabilityMonitor(props.hours)
+        )
+        return { success: true, data: result.data.probe }
+      }
+      return requireServerSuccess(
         await getPerfMetricsSummary(props.hours, undefined, true)
-      ),
+      )
+    },
     enabled: props.open && Boolean(modelName),
     staleTime: 60 * 1000,
     retry: false,
@@ -160,9 +182,13 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
     content = (
       <EmptyState
         title={t('No samples')}
-        description={t(
-          'No calls were recorded for this model in the selected period.'
-        )}
+        description={
+          isProbe
+            ? t(
+                'No probes were recorded for this model in the selected period.'
+              )
+            : t('No calls were recorded for this model in the selected period.')
+        }
       />
     )
   } else {
@@ -170,7 +196,10 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
       <>
         <dl
           aria-label={t('Overview')}
-          className='grid grid-cols-1 gap-3 sm:grid-cols-3'
+          className={cn(
+            'grid grid-cols-1 gap-3',
+            isProbe ? 'sm:grid-cols-2' : 'sm:grid-cols-3'
+          )}
         >
           <div className='flex flex-col gap-2 rounded-xl border p-4'>
             <dt className='text-muted-foreground text-xs'>
@@ -195,14 +224,16 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
               {formatLatency(summary?.avg_latency_ms ?? Number.NaN)}
             </dd>
           </div>
-          <div className='flex flex-col gap-2 rounded-xl border p-4'>
-            <dt className='text-muted-foreground text-xs'>
-              {t('Sustained tokens per second')}
-            </dt>
-            <dd className='text-xl font-semibold tabular-nums'>
-              {formatThroughput(summary?.avg_tps ?? Number.NaN)}
-            </dd>
-          </div>
+          {!isProbe && (
+            <div className='flex flex-col gap-2 rounded-xl border p-4'>
+              <dt className='text-muted-foreground text-xs'>
+                {t('Sustained tokens per second')}
+              </dt>
+              <dd className='text-xl font-semibold tabular-nums'>
+                {formatThroughput(summary?.avg_tps ?? Number.NaN)}
+              </dd>
+            </div>
+          )}
         </dl>
 
         <section className='flex min-w-0 flex-col gap-3'>
@@ -238,16 +269,19 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
         </section>
 
         <p className='text-muted-foreground text-xs leading-5'>
-          {t(
-            'Success rate excludes business rejections and includes the current partial hour.'
-          )}
+          {isProbe
+            ? t('Probe results do not include real user requests.')
+            : t(
+                'Success rate excludes business rejections and includes the current partial hour.'
+              )}
         </p>
 
         {series.length > 0 && (
           <AvailabilitySamplesTable
-            key={JSON.stringify([modelName, props.hours, props.group])}
+            key={JSON.stringify([modelName, props.hours, props.group, isProbe])}
             series={series}
             dateFormat={dateFormat}
+            showThroughput={!isProbe}
           />
         )}
       </>
@@ -262,6 +296,7 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
       description={
         <span className='flex min-w-0 flex-wrap items-center gap-2'>
           <span className='font-mono break-all'>{modelName}</span>{' '}
+          <span>{isProbe ? t('Active probes') : t('Real requests')}</span>{' '}
           <span className='inline-flex min-w-0 items-center gap-1'>
             {t('Group')}: <GroupBadge group={props.group} />
           </span>
@@ -279,6 +314,7 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
 function AvailabilitySamplesTable(props: {
   series: PerformanceSeriesPoint[]
   dateFormat: Intl.DateTimeFormat
+  showThroughput: boolean
 }) {
   const { t } = useTranslation()
   const [pageIndex, setPageIndex] = useState(0)
@@ -340,13 +376,18 @@ function AvailabilitySamplesTable(props: {
             cellClassName: tableStyles.compactNumericCell,
             cell: (point) => formatLatency(point.avg_latency_ms),
           },
-          {
-            id: 'tps',
-            header: 'TPS',
-            className: tableStyles.compactHeaderCellRight,
-            cellClassName: tableStyles.compactNumericCell,
-            cell: (point) => formatThroughput(point.avg_tps),
-          },
+          ...(props.showThroughput
+            ? [
+                {
+                  id: 'tps',
+                  header: 'TPS',
+                  className: tableStyles.compactHeaderCellRight,
+                  cellClassName: tableStyles.compactNumericCell,
+                  cell: (point: PerformanceSeriesPoint) =>
+                    formatThroughput(point.avg_tps),
+                },
+              ]
+            : []),
         ]}
       />
       {props.series.length > 50 && (

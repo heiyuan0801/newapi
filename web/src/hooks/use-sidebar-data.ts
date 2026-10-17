@@ -119,6 +119,11 @@ export function useSidebarData(): SidebarData {
             url: '/security',
             icon: ShieldCheck,
           },
+          {
+            title: t('Support tickets'),
+            url: '/support-tickets',
+            icon: Ticket,
+          },
         ],
       },
       {

@@ -43,6 +43,13 @@ func SetApiRouter(router *gin.Engine) {
 			perfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
 		apiRouter.GET("/rankings", middleware.HeaderNavModuleAuth("rankings"), controller.GetRankings)
+		availabilityRoute := apiRouter.Group("/model-availability", middleware.UserAuth())
+		{
+			availabilityRoute.GET("/monitor", controller.GetAvailabilityMonitor)
+			availabilityRoute.GET("/probes", controller.GetAvailabilityProbes)
+			availabilityRoute.GET("/incidents", controller.GetAvailabilityIncidents)
+			availabilityRoute.POST("/probe", middleware.AdminAuth(), controller.RunAvailabilityProbe)
+		}
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ResetPassword)
@@ -72,6 +79,14 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/verify/methods", middleware.UserAuth(), middleware.DisableCache(), controller.GetVerificationMethods)
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("security-verification"), middleware.DisableCache(), controller.UniversalVerify)
 
+		supportRoute := apiRouter.Group("/support-tickets", middleware.UserAuth(), middleware.DisableCache())
+		{
+			supportRoute.GET("", controller.ListSupportTickets)
+			supportRoute.POST("", middleware.UserCriticalRateLimit("support-tickets"), controller.CreateSupportTicket)
+			supportRoute.GET("/:id", controller.GetSupportTicket)
+			supportRoute.PATCH("/:id", middleware.UserCriticalRateLimit("support-tickets"), controller.UpdateSupportTicket)
+			supportRoute.POST("/:id/replies", middleware.UserCriticalRateLimit("support-tickets"), controller.ReplySupportTicket)
+		}
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/auth/refresh", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RefreshAuth)
@@ -119,6 +134,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", middleware.UserCriticalRateLimit("security-verification"), middleware.DisableCache(), controller.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", middleware.DisableCache(), controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
+				selfRoute.GET("/aff/rewards", controller.GetAffiliateRewards)
+				selfRoute.GET("/wallet/monthly", controller.GetMonthlyWalletReport)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)

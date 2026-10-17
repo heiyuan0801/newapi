@@ -19,6 +19,24 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  'Awaiting support',
+  'In progress',
+  'Awaiting your reply',
+  'Closed',
+  'Invalid support ticket input',
+  'Support ticket not found',
+  'The associated request or order was not found in your account',
+  'Reopen the ticket before replying',
+  'The ticket changed. Refresh and try again',
+  'Unable to update support tickets',
+  'Invalid billing month',
+  'Unable to load monthly usage report',
+  'Unable to load referral reward history',
+  'Spending budget is outside the allowed range',
+
+  'Model availability monitoring',
+  'Availability history cleanup',
+  'Model Availability Monitoring',
   'Healthy',
   'Degraded',
   'High failure rate',

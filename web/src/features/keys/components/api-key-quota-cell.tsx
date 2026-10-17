@@ -27,6 +27,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { API_KEY_STATUS } from '../constants'
 import type { ApiKey } from '../types'
+import { ApiKeyBudgetSummary } from './api-key-budget-summary'
 
 type ApiKeyQuotaCellProps = {
   apiKey: ApiKey
@@ -99,7 +100,7 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
       description={
         props.apiKey.unlimited_quota
           ? t(
-              'This API key has no quota limit. Requests still require available wallet or subscription quota.'
+              'This API key has no lifetime quota limit. Periodic budgets and wallet or subscription quota still apply.'
             )
           : t(
               'Total = used + remaining. It is not an initial allocation or a periodic budget; changing the remaining quota changes the total and percentage.'
@@ -110,17 +111,19 @@ export function ApiKeyQuotaCell(props: ApiKeyQuotaCellProps) {
       }
       triggerClassName={props.variant === 'card' ? 'py-0' : undefined}
       afterTrigger={
-        props.variant !== 'compact' &&
-        !props.apiKey.unlimited_quota && (
-          <Progress
-            value={percentage}
-            aria-label={t('Remaining percentage')}
-            className={cn(
-              'w-full [&_[data-slot=progress-indicator]]:bg-current',
-              progressColor
-            )}
-          />
-        )
+        <>
+          {props.variant !== 'compact' && !props.apiKey.unlimited_quota && (
+            <Progress
+              value={percentage}
+              aria-label={t('Remaining percentage')}
+              className={cn(
+                'w-full [&_[data-slot=progress-indicator]]:bg-current',
+                progressColor
+              )}
+            />
+          )}
+          <ApiKeyBudgetSummary apiKey={props.apiKey} />
+        </>
       }
     >
       {props.variant === 'compact' ? (

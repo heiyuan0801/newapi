@@ -79,6 +79,14 @@ function mockRequests(options?: {
         },
       }
     }
+    if (url === '/api/user/aff/rewards') {
+      return {
+        data: {
+          success: true,
+          data: { items: [], total: 0, page: 1, page_size: 10 },
+        },
+      }
+    }
     if (url === '/api/user/aff') {
       return { data: { success: true, data: 'invite-19' } }
     }

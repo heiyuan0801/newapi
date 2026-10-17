@@ -16,8 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { Alert, AlertDescription } from '@/components/ui/alert'
+
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
+import { PlaygroundPricePreview } from './components/playground-price-preview'
 import {
   useChatHandler,
   usePlaygroundConversation,
@@ -25,7 +31,13 @@ import {
   usePlaygroundState,
 } from './hooks'
 
-export function Playground() {
+export function Playground(
+  props: { selection?: { model: string; group: string } } = {}
+) {
+  const { t } = useTranslation()
+  const [preserveSelection, setPreserveSelection] = useState(
+    Boolean(props.selection)
+  )
   const {
     config,
     parameterEnabled,
@@ -39,7 +51,17 @@ export function Playground() {
     updateConfig,
     updateParameterEnabled,
     clearMessages,
-  } = usePlaygroundState()
+  } = usePlaygroundState(props.selection)
+
+  const { isLoadingModels, selectionReady, selectionUnavailable } =
+    usePlaygroundOptions({
+      currentGroup: config.group,
+      currentModel: config.model,
+      setGroups,
+      setModels,
+      updateConfig,
+      preserveSelection,
+    })
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -66,30 +88,42 @@ export function Playground() {
     clearMessages()
   }
 
-  const { isLoadingModels } = usePlaygroundOptions({
-    currentGroup: config.group,
-    currentModel: config.model,
-    setGroups,
-    setModels,
-    updateConfig,
-  })
-
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+      {preserveSelection && selectionUnavailable && (
+        <Alert className='mx-auto mt-3 w-[calc(100%-2rem)] max-w-4xl'>
+          <AlertDescription>
+            {t(
+              'This model and group are unavailable. Select an available combination before sending.'
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+      <PlaygroundPricePreview
+        model={config.model}
+        group={config.group}
+        ready={selectionReady}
+      />
       {/* Full-width scroll container: scrolling works even over side whitespace */}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <PlaygroundChat
           messages={messages}
           isLoadingMessages={isLoadingMessages}
-          onRegenerateMessage={handleRegenerateMessage}
+          onRegenerateMessage={(message) => {
+            if (selectionReady) handleRegenerateMessage(message)
+          }}
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
-          onSelectPrompt={handleSendMessage}
+          onSelectPrompt={(text) => {
+            if (selectionReady) handleSendMessage(text)
+          }}
           isGenerating={isGenerating}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}
           onSaveEdit={(newContent) => applyEdit(newContent, false)}
-          onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
+          onSaveEditAndSubmit={(newContent) => {
+            if (selectionReady) applyEdit(newContent, true)
+          }}
         />
       </div>
 
@@ -98,16 +132,23 @@ export function Playground() {
         <PlaygroundInput
           config={config}
           disabled={isGenerating}
+          canSend={selectionReady}
           groups={groups}
           groupValue={config.group}
           isGenerating={isGenerating}
           isModelLoading={isLoadingModels}
           modelValue={config.model}
           models={models}
-          onGroupChange={(value) => updateConfig('group', value)}
+          onGroupChange={(value) => {
+            setPreserveSelection(false)
+            updateConfig('group', value)
+          }}
           onConfigChange={updateConfig}
           onClearMessages={handleClearMessages}
-          onModelChange={(value) => updateConfig('model', value)}
+          onModelChange={(value) => {
+            setPreserveSelection(false)
+            updateConfig('model', value)
+          }}
           onParameterEnabledChange={updateParameterEnabled}
           onStop={stopGeneration}
           onSubmit={handleSendMessage}

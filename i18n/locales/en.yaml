@@ -1,4 +1,8 @@
 # English translations
+availability.fault_subject: "Model availability alert"
+availability.fault_content: "Model {{.Model}} in group {{.Group}} has a sustained availability issue (source: {{.Source}}, success rate: {{.Rate}}%). View model availability for details."
+availability.recovery_subject: "Model availability recovered"
+availability.recovery_content: "Model {{.Model}} in group {{.Group}} has recovered (source: {{.Source}}, success rate: {{.Rate}}%). View model availability for details."
 
 # Errors returned to AI clients
 common.database_error: "Database error, please contact the administrator"
@@ -73,3 +77,8 @@ channel.upstream_update_added_models: "Added model examples (showing {{.Shown}}/
 channel.upstream_update_removed_models: "Removed model examples (showing {{.Shown}}/{{.Total}}): {{.Models}}"
 channel.upstream_update_failed_channels: "Failed channel IDs (showing {{.Shown}}/{{.Total}}): {{.Ids}}"
 channel.upstream_update_more_omitted: " ({{.Count}} more omitted)"
+
+notify.token_budget_title: "API key spending budget reminder"
+notify.token_budget_daily: "One of your API keys has used at least 80% of its daily spending budget. New requests pause when the budget is exhausted. The daily budget resets at 00:00 UTC."
+notify.token_budget_monthly: "One of your API keys has used at least 80% of its monthly spending budget. New requests pause when the budget is exhausted. The monthly budget resets on the first day at 00:00 UTC."
+quota.token_budget_exhausted: "API key daily or monthly spending budget is exhausted"

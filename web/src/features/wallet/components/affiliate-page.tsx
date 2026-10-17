@@ -42,6 +42,7 @@ import { getTopupInfo } from '../api'
 import { useAffiliate } from '../hooks/use-affiliate'
 import type { UserWalletData } from '../types'
 import { AffiliateDetails } from './affiliate-details'
+import { AffiliateHistory } from './affiliate-history'
 import { AffiliateSummary } from './affiliate-summary'
 import { TransferDialog } from './dialogs/transfer-dialog'
 
@@ -148,6 +149,7 @@ export function AffiliatePage() {
               loading={affiliate.loading}
               onRetry={() => void affiliate.refetch()}
             />
+            <AffiliateHistory />
             <p className='text-muted-foreground text-xs'>
               {t('Minimum:')}{' '}
               {formatQuotaWithCurrency(minimumQuota, { locale })}

@@ -28,8 +28,40 @@ import { api } from '@/lib/api'
 import type { ModelAvailabilitySearch } from '@/routes/_authenticated/model-availability'
 
 import { AvailabilityDashboard } from '..'
+import { AvailabilityModelRow } from '../components/availability-model-row'
 
 const start = 1789387200
+
+it('launches the chosen group when the same model has several availability rows', async () => {
+  const onTest = vi.fn()
+  const model = {
+    model_name: 'grouped-model',
+    enable_groups: ['default', 'vip'],
+  }
+  render(
+    <ul>
+      <AvailabilityModelRow
+        item={{
+          model,
+          groups: ['default', 'vip'].map((group) => ({
+            model,
+            group,
+            metrics: undefined,
+            status: 'unknown',
+          })),
+        }}
+        windowStart={start}
+        windowEnd={start + 3600}
+        onDetails={vi.fn()}
+        onTest={onTest}
+      />
+    </ul>
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Test grouped-model in vip' })
+  )
+  expect(onTest).toHaveBeenCalledWith('grouped-model', 'vip')
+})
 const names = [
   'alpha-model',
   'beta-model',
@@ -102,6 +134,32 @@ metrics.data.group_models = metrics.data.models.map((item) => ({
   group: 'default',
 }))
 
+const monitor = {
+  success: true,
+  data: {
+    probe_enabled: false,
+    alerts_enabled: false,
+    last_run_at: 0,
+    last_probe_at: 0,
+    running: false,
+    probe: {
+      window_start: start,
+      window_end: metrics.data.window_end,
+      models: [],
+      group_models: [],
+    },
+  },
+}
+const incidents = {
+  success: true,
+  data: { items: [], total: 0, page: 1, page_size: 20 },
+}
+function monitoringResponse(url: string | undefined) {
+  if (url === '/api/model-availability/monitor') return monitor
+  if (url === '/api/model-availability/incidents') return incidents
+  return undefined
+}
+
 let client: QueryClient
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -112,6 +170,7 @@ afterEach(() => client.clear())
 function renderPage(initial: Partial<ModelAvailabilitySearch> = {}) {
   function Harness() {
     const [search, setSearch] = useState<ModelAvailabilitySearch>({
+      source: 'real',
       hours: 24,
       q: '',
       status: 'all',
@@ -136,6 +195,8 @@ function renderPage(initial: Partial<ModelAvailabilitySearch> = {}) {
 }
 function mockRequests(options: { empty?: boolean; failure?: boolean } = {}) {
   return vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    const monitoring = monitoringResponse(url)
+    if (monitoring) return { data: monitoring }
     if (url === '/api/pricing') {
       return { data: { ...catalog, data: options.empty ? [] : catalog.data } }
     }
@@ -197,7 +258,8 @@ it('shows an API failure as an error and lets the user retry successfully', asyn
   ).toBeVisible()
   expect(screen.queryByText('No models available')).not.toBeInTheDocument()
   request.mockImplementation(async (url) => ({
-    data: url === '/api/pricing' ? catalog : metrics,
+    data:
+      monitoringResponse(url) ?? (url === '/api/pricing' ? catalog : metrics),
   }))
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(
@@ -211,9 +273,11 @@ it('keeps loaded rows visible when a refresh fails and explains that the data is
   await screen.findByRole('list', { name: 'Model Availability' })
   request.mockRejectedValue(new Error('temporary outage'))
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Unable to refresh availability. Showing the last loaded data.'
-  )
+  expect(
+    await screen.findByText(
+      'Unable to refresh availability. Showing the last loaded data.'
+    )
+  ).toBeVisible()
   expect(screen.getByText('99.01%')).toBeVisible()
 })
 
@@ -274,7 +338,9 @@ it('paginates whole models while keeping every group together on the same page',
     enable_groups: ['default', 'vip'],
   }))
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: url === '/api/pricing' ? { ...catalog, data } : metrics,
+    data:
+      monitoringResponse(url) ??
+      (url === '/api/pricing' ? { ...catalog, data } : metrics),
   }))
   renderPage()
   const list = await screen.findByRole('list', { name: 'Model Availability' })
@@ -312,6 +378,8 @@ it('uses the authenticated model directory when the public model square is disab
     HeaderNavModules: { pricing: { enabled: false, requireAuth: false } },
   })
   const request = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    const monitoring = monitoringResponse(url)
+    if (monitoring) return { data: monitoring }
     if (url === '/api/user/self/groups') {
       return {
         data: {
@@ -362,6 +430,8 @@ it('shows a model once with independent group rates and opens details for the se
     },
   }
   const request = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    const monitoring = monitoringResponse(url)
+    if (monitoring) return { data: monitoring }
     if (url === '/api/perf-metrics') {
       return {
         data: {
@@ -435,7 +505,9 @@ it('filters a specific group without mixing in another group of the same model',
     },
   }
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: url === '/api/pricing' ? groupedCatalog : groupedMetrics,
+    data:
+      monitoringResponse(url) ??
+      (url === '/api/pricing' ? groupedCatalog : groupedMetrics),
   }))
   renderPage()
   await screen.findByRole('list', { name: 'Model Availability' })
@@ -461,7 +533,9 @@ it('keeps a missing group unknown even when another group and the model aggregat
     data: [{ ...catalog.data[0], enable_groups: ['default', 'vip'] }],
   }
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: url === '/api/pricing' ? groupedCatalog : metrics,
+    data:
+      monitoringResponse(url) ??
+      (url === '/api/pricing' ? groupedCatalog : metrics),
   }))
   renderPage({ group: 'vip' })
   const list = await screen.findByRole('list', { name: 'Model Availability' })
@@ -469,4 +543,21 @@ it('keeps a missing group unknown even when another group and the model aggregat
   expect(within(list).getAllByText('—')).toHaveLength(2)
   expect(within(list).queryByText('99.01%')).not.toBeInTheDocument()
   expect(list.querySelectorAll('[data-status="sampled"]')).toHaveLength(0)
+})
+
+it('switches to disabled probes without borrowing real-request rates or sending upstream requests', async () => {
+  mockRequests()
+  const post = vi.spyOn(api, 'post')
+  renderPage({ q: 'alpha' })
+  const list = await screen.findByRole('list', { name: 'Model Availability' })
+  expect(within(list).getByText('99.01%')).toBeVisible()
+  await userEvent.click(screen.getByRole('tab', { name: 'Active probes' }))
+  expect(screen.getByRole('tab', { name: 'Active probes' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  expect(await screen.findByText('Active probes are disabled')).toBeVisible()
+  expect(within(list).queryByText('99.01%')).not.toBeInTheDocument()
+  expect(within(list).getAllByText('—')).toHaveLength(2)
+  expect(post).not.toHaveBeenCalled()
 })

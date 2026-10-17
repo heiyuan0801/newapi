@@ -1015,3 +1015,32 @@ func verifyAPITokenAudit(t *testing.T) {
 		assert.EqualValues(t, 1, count)
 	})
 }
+
+func TestTokenBudgetsRejectInvalidInputsAndProtectServerCounters(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	for _, value := range []int64{-1, int64(maxTokenQuota()) + 1} {
+		ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{"name": "invalid-budget", "unlimited_quota": true, "daily_budget": value}, 1)
+		AddToken(ctx)
+		assert.False(t, decodeAPIResponse(t, recorder).Success)
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{"name": "budget-key", "unlimited_quota": true, "expired_time": -1, "daily_budget": 100, "monthly_budget": 1000, "daily_budget_used": 99, "monthly_budget_used": 999, "daily_budget_start": 123, "budget_reminder_enabled": true}, 1)
+	AddToken(ctx)
+	require.True(t, decodeAPIResponse(t, recorder).Success)
+	var token model.Token
+	require.NoError(t, db.First(&token, "name = ?", "budget-key").Error)
+	assert.Equal(t, int64(100), token.DailyBudget)
+	assert.Equal(t, int64(0), token.DailyBudgetUsed)
+	assert.Equal(t, int64(0), token.MonthlyBudgetUsed)
+	assert.Equal(t, int64(0), token.DailyBudgetStart)
+	require.NoError(t, db.Model(&token).Update("daily_budget_used", 80).Error)
+	body := map[string]any{"id": token.Id, "name": token.Name, "unlimited_quota": true, "expired_time": -1, "daily_budget_used": 0, "daily_budget_start": 0}
+	ctx, recorder = newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 2)
+	UpdateToken(ctx)
+	assert.False(t, decodeAPIResponse(t, recorder).Success, "other users cannot change the budget")
+	ctx, recorder = newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+	require.True(t, decodeAPIResponse(t, recorder).Success)
+	require.NoError(t, db.First(&token, token.Id).Error)
+	assert.Equal(t, int64(100), token.DailyBudget, "legacy clients preserve configured budgets")
+	assert.Equal(t, int64(80), token.DailyBudgetUsed, "usage cannot be reset by the client")
+}

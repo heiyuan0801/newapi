@@ -27,6 +27,7 @@ vi.mock('@/features/model-availability', () => ({
 describe('model availability route search', () => {
   it('opens the default 24-hour view without query parameters', () => {
     expect(modelAvailabilitySearchSchema.parse({})).toEqual({
+      source: 'real',
       hours: 24,
       status: 'all',
       q: '',
@@ -45,6 +46,7 @@ describe('model availability route search', () => {
         group: 'vip',
       })
     ).toEqual({
+      source: 'real',
       hours: 168,
       status: 'degraded',
       q: 'gemini-4',
@@ -59,6 +61,7 @@ describe('model availability route search', () => {
     { hours: Infinity, status: null, q: null, page: -5 },
   ])('recovers unsupported or malformed query values (%j)', (search) => {
     expect(modelAvailabilitySearchSchema.parse(search)).toEqual({
+      source: 'real',
       hours: 24,
       status: 'all',
       q: '',
@@ -66,4 +69,13 @@ describe('model availability route search', () => {
       page: 1,
     })
   })
+})
+
+it('restores the probe source and defaults unknown sources to real requests', () => {
+  expect(modelAvailabilitySearchSchema.parse({ source: 'probe' }).source).toBe(
+    'probe'
+  )
+  expect(
+    modelAvailabilitySearchSchema.parse({ source: 'unknown' }).source
+  ).toBe('real')
 })

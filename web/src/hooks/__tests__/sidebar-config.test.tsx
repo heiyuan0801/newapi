@@ -90,7 +90,7 @@ describe('security sidebar visibility', () => {
       result.current
         .find((group) => group.id === 'account')
         ?.items.map((item) => item.title)
-    ).toEqual(['Profile', 'Security & Access'])
+    ).toEqual(['Profile', 'Security & Access', 'Support tickets'])
     expect(
       navigationItems(result.current).some((item) => item.title === 'API Keys')
     ).toBe(true)

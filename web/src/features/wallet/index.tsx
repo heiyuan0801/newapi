@@ -30,6 +30,7 @@ import { getSelf } from '@/lib/api'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
+import { MonthlyUsageReport } from './components/monthly-usage-report'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
@@ -343,6 +344,7 @@ export function Wallet(props: WalletProps) {
               </Link>
             </aside>
           </div>
+          <MonthlyUsageReport />
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

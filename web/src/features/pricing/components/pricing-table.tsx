@@ -40,6 +40,7 @@ export interface PricingTableProps {
   showRechargePrice?: boolean
   selectedGroup?: string
   onModelClick?: (modelName: string) => void
+  onTest?: (modelName: string, group: string) => void
 }
 
 export function PricingTable(props: PricingTableProps) {
@@ -66,6 +67,7 @@ export function PricingTable(props: PricingTableProps) {
     usdExchangeRate,
     showRechargePrice,
     selectedGroup,
+    onTest: props.onTest,
   })
 
   const { table } = useDataTable({

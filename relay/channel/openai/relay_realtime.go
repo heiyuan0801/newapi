@@ -133,7 +133,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						usage.InputTokenDetails.TextTokens += realtimeUsage.InputTokenDetails.TextTokens
 						usage.OutputTokenDetails.AudioTokens += realtimeUsage.OutputTokenDetails.AudioTokens
 						usage.OutputTokenDetails.TextTokens += realtimeUsage.OutputTokenDetails.TextTokens
-						err := preConsumeUsage(c, info, usage, sumUsage)
+						err := preConsumeUsage(c, info, usage, sumUsage, localUsage)
 						if err != nil {
 							errChan <- fmt.Errorf("error consume usage: %v", err)
 							return
@@ -154,7 +154,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						localUsage.InputTokens += textToken + audioToken
 						localUsage.InputTokenDetails.TextTokens += textToken
 						localUsage.InputTokenDetails.AudioTokens += audioToken
-						err = preConsumeUsage(c, info, localUsage, sumUsage)
+						err = preConsumeUsage(c, info, localUsage, sumUsage, nil)
 						if err != nil {
 							errChan <- fmt.Errorf("error consume usage: %v", err)
 							return
@@ -211,11 +211,11 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	}
 
 	if usage.TotalTokens != 0 {
-		_ = preConsumeUsage(c, info, usage, sumUsage)
+		_ = preConsumeUsage(c, info, usage, sumUsage, localUsage)
 	}
 
 	if localUsage.TotalTokens != 0 {
-		_ = preConsumeUsage(c, info, localUsage, sumUsage)
+		_ = preConsumeUsage(c, info, localUsage, sumUsage, nil)
 	}
 
 	// check usage total tokens, if 0, use local usage
@@ -223,11 +223,23 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	return nil, sumUsage
 }
 
-func preConsumeUsage(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.RealtimeUsage, totalUsage *dto.RealtimeUsage) error {
+func preConsumeUsage(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.RealtimeUsage, totalUsage *dto.RealtimeUsage, localEstimate *dto.RealtimeUsage) error {
 	if usage == nil || totalUsage == nil {
 		return fmt.Errorf("invalid usage pointer")
 	}
 
+	// Consume both buffers before a payment can fail. The upstream's usage
+	// is authoritative for this cycle; its local estimate must not be charged
+	// again by the final shutdown flush after a budget rejection.
+	snapshot := *usage
+	if snapshot == (dto.RealtimeUsage{}) {
+		return nil
+	}
+	*usage = dto.RealtimeUsage{}
+	if localEstimate != nil {
+		*localEstimate = dto.RealtimeUsage{}
+	}
+	usage = &snapshot
 	totalUsage.TotalTokens += usage.TotalTokens
 	totalUsage.InputTokens += usage.InputTokens
 	totalUsage.OutputTokens += usage.OutputTokens

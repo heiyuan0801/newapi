@@ -133,14 +133,20 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	if tokenKey == "" {
 		return
 	}
+	at := task.PrivateData.TokenBudgetStartedAt
+	if at == 0 {
+		at = task.SubmitTime
+	}
 	var err error
 	if delta > 0 {
-		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta)
+		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta, at)
 	} else {
-		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta)
+		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta, at)
 	}
 	if err != nil {
 		logger.LogWarn(ctx, common.LogText("failed to adjust token quota (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
+	} else if delta > 0 {
+		queueTokenBudgetNotify(task.UserId, task.PrivateData.TokenId, at)
 	}
 }
 

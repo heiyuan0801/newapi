@@ -71,6 +71,12 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 }
 
 func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+	return testChannelRequest(ctx, channel, testUserID, testModel, endpointType, isStream, "", false)
+}
+
+// Availability probes reuse protocol conversion/response validation without
+// consuming wallet quota, writing consume logs, or updating channel status.
+func testChannelRequest(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, probeGroup string, availabilityProbe bool) testResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -151,6 +157,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		requestPath = strings.Replace(requestPath, ":generateContent", ":streamGenerateContent", 1)
 	}
 	c.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil)
+	if availabilityProbe {
+		common.SetContextKey(c, constant.ContextKeyAvailabilityProbe, true)
+	}
 
 	cache, err := model.GetUserCache(testUserID)
 	if err != nil {
@@ -167,6 +176,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
 	group, _ := model.GetUserGroup(testUserID, false)
+	if availabilityProbe {
+		group = probeGroup
+	}
 	c.Set("group", group)
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
@@ -229,6 +241,16 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
+	if availabilityProbe {
+		// Fixed tiny text requests keep active monitoring costs bounded. No image,
+		// audio or asynchronous task protocol is dispatched by this caller.
+		switch req := request.(type) {
+		case *dto.OpenAIResponsesRequest:
+			req.MaxOutputTokens = lo.ToPtr(uint(64))
+		case *dto.GeminiChatRequest:
+			req.GenerationConfig.MaxOutputTokens = lo.ToPtr(uint(64))
+		}
+	}
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -243,7 +265,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	info.IsChannelTest = true
 	info.InitChannelMeta(c)
 
-	err = attachTestBillingRequestInput(info, request)
+	if !availabilityProbe {
+		err = attachTestBillingRequestInput(info, request)
+	}
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -293,9 +317,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	//// 创建一个用于日志的 info 副本，移除 ApiKey
 	//logInfo := info
 	//logInfo.ApiKey = ""
-	common.SysLog(common.LogText("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
-
-	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+	var priceData hosttypes.PriceData
+	if !availabilityProbe {
+		common.SysLog(common.LogText("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
+		priceData, err = helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+	}
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -446,6 +472,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		if httpResp.StatusCode != http.StatusOK {
+			if availabilityProbe {
+				// Do not parse/log upstream error text in automated monitoring.
+				_ = httpResp.Body.Close()
+				return testResult{context: c, localErr: errors.New("availability upstream request failed")}
+			}
 			err := service.RelayErrorHandler(c.Request.Context(), httpResp, true)
 			common.SysError(common.LogText(
 				"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",
@@ -472,12 +503,12 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			newAPIError: respErr,
 		}
 	}
-	usage, usageErr := coerceTestUsage(usageA, isStream, info.GetEstimatePromptTokens())
-	if usageErr != nil {
-		return testResult{
-			context:     c,
-			localErr:    usageErr,
-			newAPIError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+	var usage *dto.Usage
+	if !availabilityProbe {
+		var usageErr error
+		usage, usageErr = coerceTestUsage(usageA, isStream, info.GetEstimatePromptTokens())
+		if usageErr != nil {
+			return testResult{context: c, localErr: usageErr, newAPIError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)}
 		}
 	}
 	result := w.Result()
@@ -495,6 +526,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			localErr:    bodyErr,
 			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
+	}
+	if availabilityProbe {
+		return testResult{context: c}
 	}
 	info.SetEstimatePromptTokens(usage.PromptTokens)
 

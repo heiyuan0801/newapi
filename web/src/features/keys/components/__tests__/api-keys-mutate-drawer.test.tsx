@@ -299,3 +299,28 @@ describe('API keys mutate drawer user quota query switch', () => {
     expect(createdPayloads[0]?.allow_user_quota_query).toBe(false)
   })
 })
+
+test('submits daily and monthly spending caps while lifetime quota stays unlimited', async () => {
+  const payloads: Array<Record<string, unknown>> = []
+  installApiFixtures(payloads)
+  await renderCreateDrawer()
+  changeInput(getControlByLabel('Name'), 'budgeted-key')
+  fireEvent.change(
+    screen.getByRole('spinbutton', { name: 'Daily budget (USD)' }),
+    { target: { value: '2' } }
+  )
+  fireEvent.change(
+    screen.getByRole('spinbutton', { name: 'Monthly budget (USD)' }),
+    { target: { value: '20' } }
+  )
+  fireEvent.click(screen.getByRole('switch', { name: 'Budget reminders' }))
+  fireEvent.click(findButton('Save changes', true))
+  await waitFor(() => expect(payloads).toHaveLength(1))
+  expect(payloads[0]).toMatchObject({
+    daily_budget: 1_000_000,
+    monthly_budget: 10_000_000,
+    unlimited_quota: true,
+    budget_reminder_enabled: true,
+  })
+  expect(screen.getByText(/Daily resets at 00:00 UTC/)).toBeInTheDocument()
+})

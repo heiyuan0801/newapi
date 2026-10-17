@@ -2,6 +2,9 @@ package model
 
 import (
 	"math"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -258,4 +261,186 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	cached, err = cacheGetTokenByKey(token.Key)
 	require.NoError(t, err)
 	assert.Equal(t, 100, cached.RemainQuota)
+}
+
+func TestTokenBudgetReservationEnforcesLimitsAndCompensatesLifetimeFailure(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	at := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC).Unix()
+	token := createReserveTestToken(t, 100)
+	require.NoError(t, DB.Model(&token).Updates(map[string]any{"daily_budget": 80, "monthly_budget": 150}).Error)
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 60, false, at)
+	require.NoError(t, err)
+	require.True(t, reserved)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 21, false, at)
+	require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+	assert.False(t, reserved)
+	assert.Equal(t, int64(60), getTokenFromDB(t, token.Id).DailyBudgetUsed)
+	// A failed lifetime reservation must not consume periodic budget.
+	require.NoError(t, DB.Model(&token).Update("remain_quota", 1).Error)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 10, false, at)
+	require.NoError(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, int64(60), getTokenFromDB(t, token.Id).DailyBudgetUsed)
+	require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 20, at))
+	assert.Equal(t, int64(40), getTokenFromDB(t, token.Id).MonthlyBudgetUsed)
+}
+
+func TestTokenBudgetUTCResetDoesNotCreditNewPeriodForOldRefund(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	at := time.Date(2026, 10, 31, 23, 59, 0, 0, time.UTC).Unix()
+	token := createReserveTestToken(t, 1000)
+	require.NoError(t, DB.Model(&token).Updates(map[string]any{"daily_budget": 80, "monthly_budget": 100, "unlimited_quota": true}).Error)
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 80, true, at)
+	require.NoError(t, err)
+	require.True(t, reserved)
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 1, true, at)
+	require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+	assert.False(t, reserved)
+	next := at + 120
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 25, true, next)
+	require.NoError(t, err)
+	require.True(t, reserved)
+	require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 80, at))
+	got := getTokenFromDB(t, token.Id)
+	assert.Equal(t, int64(25), got.DailyBudgetUsed)
+	assert.Equal(t, int64(25), got.MonthlyBudgetUsed)
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 75, next))
+	assert.Equal(t, int64(100), getTokenFromDB(t, token.Id).MonthlyBudgetUsed, "actual settlement is retained even above the daily estimate")
+	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 1, true, next)
+	require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+	assert.False(t, reserved)
+}
+
+func TestTokenBudgetReminderClaimsOncePerUTCPeriod(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	at := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC).Unix()
+	token := createReserveTestToken(t, 1000)
+	require.NoError(t, DB.Model(&token).Updates(map[string]any{"daily_budget": 100, "monthly_budget": 100, "budget_reminder_enabled": true}).Error)
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 79, false, at)
+	require.NoError(t, err)
+	require.True(t, reserved)
+	notices, err := ClaimTokenBudgetNotices(token.Id, at)
+	require.NoError(t, err)
+	assert.Empty(t, notices)
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 1, at))
+	notices, err = ClaimTokenBudgetNotices(token.Id, at)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"daily", "monthly"}, notices)
+	notices, err = ClaimTokenBudgetNotices(token.Id, at)
+	require.NoError(t, err)
+	assert.Empty(t, notices)
+	require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 20, at))
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 20, at))
+	notices, err = ClaimTokenBudgetNotices(token.Id, at)
+	require.NoError(t, err)
+	assert.Empty(t, notices, "refund and threshold recrossing do not repeat a period notice")
+}
+
+func TestTokenBudgetDatabaseMatrix(t *testing.T) {
+	previousDB, previousSQLite := DB, common.SQLitePath
+	previousType := common.MainDatabaseType()
+	defer func() {
+		DB = previousDB
+		common.SQLitePath = previousSQLite
+		common.SetMainDatabaseType(previousType)
+		initCol()
+	}()
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var dsn string
+			switch dialect {
+			case "sqlite":
+				common.SQLitePath = filepath.Join(t.TempDir(), "budget.db")
+				dsn = "local"
+			case "mysql":
+				dsn = os.Getenv("TEST_MYSQL_DSN")
+			case "postgres":
+				dsn = os.Getenv("TEST_POSTGRES_DSN")
+			}
+			if dsn == "" {
+				t.Skip("real test database DSN is not configured")
+			}
+			t.Setenv("TOKEN_BUDGET_TEST_DSN", dsn)
+			db, _, err := chooseDB("TOKEN_BUDGET_TEST_DSN", false)
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			defer sqlDB.Close()
+			DB = db
+			initCol()
+			require.NoError(t, DB.AutoMigrate(&Token{}))
+			token := createReserveTestToken(t, 1000)
+			defer DB.Unscoped().Delete(&token)
+			at := time.Date(2026, 10, 31, 23, 59, 0, 0, time.UTC).Unix()
+			require.NoError(t, DB.Model(&token).Updates(map[string]any{"daily_budget": 100, "monthly_budget": 120, "unlimited_quota": true, "budget_reminder_enabled": true}).Error)
+			for range 2 {
+				reserved, err := TryReserveTokenQuota(token.Id, token.Key, 0, true, at)
+				require.NoError(t, err)
+				require.True(t, reserved, "zero estimate prechecks remain valid when MySQL reports no changed rows")
+			}
+			// Both concurrent requests cannot reserve 60 from a budget of 100.
+			start := make(chan struct{})
+			results := make(chan error, 2)
+			var workers sync.WaitGroup
+			for range 2 {
+				workers.Go(func() { <-start; _, err := TryReserveTokenQuota(token.Id, token.Key, 60, true, at); results <- err })
+			}
+			close(start)
+			workers.Wait()
+			close(results)
+			successes := 0
+			for err := range results {
+				if err == nil {
+					successes++
+				} else {
+					require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+				}
+			}
+			require.Equal(t, 1, successes)
+			require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 20, at))
+			notices, err := ClaimTokenBudgetNotices(token.Id, at)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"daily"}, notices)
+			// Both counters reset on month rollover, including MySQL assignment order.
+			reserved, err := TryReserveTokenQuota(token.Id, token.Key, 25, true, at+120)
+			require.NoError(t, err)
+			require.True(t, reserved)
+			require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 80, at))
+			got := getTokenFromDB(t, token.Id)
+			assert.Equal(t, int64(25), got.DailyBudgetUsed)
+			assert.Equal(t, int64(25), got.MonthlyBudgetUsed)
+			require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 75, at+120))
+			reserved, err = TryReserveTokenQuota(token.Id, token.Key, 1, true, at+120)
+			require.ErrorIs(t, err, ErrTokenBudgetExceeded)
+			assert.False(t, reserved)
+		})
+	}
+}
+
+func TestTokenBudgetFailedReservationCannotBecomeUncountedAfterConcurrentRefund(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	token := createReserveTestToken(t, 1000)
+	at := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC).Unix()
+	day, month := TokenBudgetPeriods(at)
+	require.NoError(t, DB.Model(&token).Updates(map[string]any{"daily_budget": 100, "daily_budget_used": 100, "daily_budget_start": day, "monthly_budget_start": month}).Error)
+	refunded := false
+	require.NoError(t, DB.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:budget-concurrent-refund", func(tx *gorm.DB) {
+		if refunded || tx.Error != nil || tx.RowsAffected != 0 || tx.Statement.Table != "tokens" {
+			return
+		}
+		refunded = true
+		// This explicit concurrent outcome occurs after a cap rejected the UPDATE.
+		// No clocks, sleeps, random stress, or duplicated accounting logic needed.
+		require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Update("daily_budget_used", 0).Error)
+	}))
+	defer DB.Callback().Update().Remove("test:budget-concurrent-refund")
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 50, false, at)
+	require.True(t, refunded)
+	assert.False(t, reserved)
+	assert.ErrorIs(t, err, ErrTokenBudgetExceeded)
+	assert.Equal(t, int64(0), getTokenFromDB(t, token.Id).DailyBudgetUsed)
 }

@@ -47,6 +47,14 @@ export const apiKeySchema = z.object({
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
   allow_user_quota_query: z.boolean().optional().default(false),
+  daily_budget: z.number().optional(),
+  monthly_budget: z.number().optional(),
+  daily_budget_used: z.number().optional(),
+  monthly_budget_used: z.number().optional(),
+  daily_budget_reset_at: z.number().optional(),
+  monthly_budget_reset_at: z.number().optional(),
+  budget_paused: z.boolean().optional(),
+  budget_reminder_enabled: z.boolean().optional(),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -87,6 +95,9 @@ export interface SearchApiKeysParams {
 export interface ApiKeyFormData {
   name: string
   remain_quota: number
+  daily_budget: number
+  monthly_budget: number
+  budget_reminder_enabled: boolean
   expired_time: number
   unlimited_quota: boolean
   model_limits_enabled: boolean

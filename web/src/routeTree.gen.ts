@@ -28,6 +28,7 @@ import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
 import { Route as AuthenticatedModelAvailabilityRouteImport } from './routes/_authenticated/model-availability'
+import { Route as AuthenticatedSupportTicketsRouteImport } from './routes/_authenticated/support-tickets'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
@@ -167,6 +168,12 @@ const AuthenticatedModelAvailabilityRoute =
   AuthenticatedModelAvailabilityRouteImport.update({
     id: '/model-availability',
     path: '/model-availability',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSupportTicketsRoute =
+  AuthenticatedSupportTicketsRouteImport.update({
+    id: '/support-tickets',
+    path: '/support-tickets',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSystemSettingsRouteRoute =
@@ -455,6 +462,7 @@ export interface FileRoutesByFullPath {
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
   '/model-availability': typeof AuthenticatedModelAvailabilityRoute
+  '/support-tickets': typeof AuthenticatedSupportTicketsRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/pricing/': typeof PricingIndexRoute
@@ -519,6 +527,7 @@ export interface FileRoutesByTo {
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
   '/model-availability': typeof AuthenticatedModelAvailabilityRoute
+  '/support-tickets': typeof AuthenticatedSupportTicketsRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
   '/pricing': typeof PricingIndexRoute
@@ -587,6 +596,7 @@ export interface FileRoutesById {
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
   '/_authenticated/model-availability': typeof AuthenticatedModelAvailabilityRoute
+  '/_authenticated/support-tickets': typeof AuthenticatedSupportTicketsRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/pricing/': typeof PricingIndexRoute
@@ -654,6 +664,7 @@ export interface FileRouteTypes {
     | '/503'
     | '/chat2link'
     | '/model-availability'
+    | '/support-tickets'
     | '/oauth/$provider'
     | '/about/'
     | '/pricing/'
@@ -718,6 +729,7 @@ export interface FileRouteTypes {
     | '/503'
     | '/chat2link'
     | '/model-availability'
+    | '/support-tickets'
     | '/oauth/$provider'
     | '/about'
     | '/pricing'
@@ -785,6 +797,7 @@ export interface FileRouteTypes {
     | '/(errors)/503'
     | '/_authenticated/chat2link'
     | '/_authenticated/model-availability'
+    | '/_authenticated/support-tickets'
     | '/oauth/$provider'
     | '/about/'
     | '/pricing/'
@@ -984,6 +997,13 @@ declare module '@tanstack/react-router' {
       path: '/model-availability'
       fullPath: '/model-availability'
       preLoaderRoute: typeof AuthenticatedModelAvailabilityRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/support-tickets': {
+      id: '/_authenticated/support-tickets'
+      path: '/support-tickets'
+      fullPath: '/support-tickets'
+      preLoaderRoute: typeof AuthenticatedSupportTicketsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/system-settings': {
@@ -1404,6 +1424,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedModelAvailabilityRoute: typeof AuthenticatedModelAvailabilityRoute
+  AuthenticatedSupportTicketsRoute: typeof AuthenticatedSupportTicketsRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
@@ -1432,6 +1453,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
   AuthenticatedModelAvailabilityRoute: AuthenticatedModelAvailabilityRoute,
+  AuthenticatedSupportTicketsRoute: AuthenticatedSupportTicketsRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,

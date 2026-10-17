@@ -60,6 +60,7 @@ import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-p
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
 import { pluginUsageSchema } from '@/features/pricing/lib/plugin-pricing'
+import { SupportTicketCreateButton } from '@/features/support-tickets/components/support-ticket-create-button'
 import { PolicyDecisionRecord } from '@/features/system-settings/request-policies/decision-record'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -643,6 +644,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
         </>
       }
       description={t('View the complete details for this log entry')}
+      footer={
+        props.log.type === 5 && props.log.request_id && !props.isAdmin ? (
+          <SupportTicketCreateButton
+            associationType='request'
+            associationId={props.log.request_id}
+          />
+        ) : undefined
+      }
       contentClassName={cn(
         'min-w-0 overflow-hidden',
         'max-sm:max-h-(--dialog-available-height) max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)] max-sm:p-4',

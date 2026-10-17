@@ -41,6 +41,7 @@ interface PlaygroundInputProps {
   onSubmit: (text: string) => void
   onStop?: () => void
   disabled?: boolean
+  canSend?: boolean
   isGenerating?: boolean
   models: ModelOption[]
   modelValue: string
@@ -67,6 +68,7 @@ export function PlaygroundInput({
   onSubmit,
   onStop,
   disabled,
+  canSend = true,
   isGenerating,
   models,
   modelValue,
@@ -85,7 +87,10 @@ export function PlaygroundInput({
   const [text, setText] = useState('')
 
   const handleSubmit = (message: PromptInputMessage) => {
-    const submittableText = getSubmittableInputText(message, disabled)
+    const submittableText = getSubmittableInputText(
+      message,
+      disabled || !canSend
+    )
 
     if (!submittableText) return
     onSubmit(submittableText)
@@ -113,6 +118,7 @@ export function PlaygroundInput({
 
         <PromptInputFooter className='border-border/60 bg-muted/20 dark:bg-muted/10 border-t px-3 py-2.5 backdrop-blur'>
           <PlaygroundInputControls
+            canSend={canSend}
             disabled={disabled}
             groups={groups}
             groupValue={groupValue}

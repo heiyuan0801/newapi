@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -38,6 +39,10 @@ import { usePricingData } from './hooks/use-pricing-data'
 
 export function Pricing() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const handleTestModel = (model: string, group: string) => {
+    void navigate({ to: '/playground', search: { model, group } })
+  }
   const [selectedModelName, setSelectedModelName] = useState<string | null>(
     null
   )
@@ -126,6 +131,7 @@ export function Pricing() {
         <ModelCardGrid
           models={filteredModels}
           onModelClick={handleModelClick}
+          onTest={handleTestModel}
           priceRate={priceRate}
           usdExchangeRate={usdExchangeRate}
           tokenUnit={tokenUnit}
@@ -144,6 +150,7 @@ export function Pricing() {
         showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
         onModelClick={handleModelClick}
+        onTest={handleTestModel}
       />
     )
   }

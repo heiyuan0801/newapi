@@ -38,6 +38,7 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	task.Quota = 0
 	task.TokenId = 0
 	task.BillingChannelId = 0
+	task.TokenBudgetStartedAt = 0
 	if !shouldBill {
 		return false, nil
 	}
@@ -52,6 +53,7 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	}
 
 	task.Quota = quota
+	task.TokenBudgetStartedAt = tokenBudgetStartedAt(relayInfo)
 	task.BillingChannelId = task.ChannelId
 	if relayInfo.ChannelMeta != nil && relayInfo.ChannelId > 0 {
 		task.BillingChannelId = relayInfo.ChannelId
@@ -71,7 +73,18 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return false, errors.New("Midjourney task must be persisted before billing")
 	}
 
-	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
+	var result postConsumeQuotaResult
+	var billingErr error
+	if relayInfo.Billing != nil {
+		billingErr = relayInfo.Billing.Settle(task.Quota)
+		result.FundingApplied = billingErr == nil
+		result.TokenApplied = billingErr == nil && !relayInfo.IsPlayground
+		if billingErr == nil {
+			checkAndSendTokenBudgetNotify(relayInfo)
+		}
+	} else {
+		result, billingErr = postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
+	}
 	if !result.FundingApplied {
 		task.Quota = 0
 		task.TokenId = 0
@@ -105,9 +118,13 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	}
 
 	if task.TokenId > 0 {
+		at := task.TokenBudgetStartedAt
+		if at == 0 {
+			at = task.SubmitTime / 1000
+		}
 		tokenKey := resolveTokenKey(ctx, task.TokenId, task.MjId)
 		if tokenKey != "" {
-			if err := model.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
+			if err := model.IncreaseTokenQuota(task.TokenId, tokenKey, quota, at); err != nil {
 				logger.LogWarn(ctx, common.LogText("failed to refund Midjourney token quota, task %s: %s", task.MjId, err.Error()))
 			}
 		}
@@ -388,4 +405,29 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 		StatusCode: statusCode,
 		Response:   midjResponse,
 	}, responseBody, nil
+}
+
+// PreConsumeMidjourneyBudget preserves legacy wallet-only billing while
+// reserving before an upstream submission when a periodic budget is active.
+func PreConsumeMidjourneyBudget(c *gin.Context, info *relaycommon.RelayInfo, quota int) error {
+	if info == nil {
+		return errors.New("relay info is nil")
+	}
+	if info.IsPlayground || info.TokenId <= 0 {
+		return nil
+	}
+	hasBudget, err := model.TokenHasBudget(info.TokenId)
+	if err != nil || !hasBudget {
+		return err
+	}
+	local := *info
+	local.UserSetting.BillingPreference = "wallet_only"
+	local.ForcePreConsume = true
+	if apiErr := PreConsumeBilling(c, quota, &local); apiErr != nil {
+		return apiErr
+	}
+	info.Billing = local.Billing
+	info.BillingSource = local.BillingSource
+	info.TokenBudgetStartedAt = local.TokenBudgetStartedAt
+	return nil
 }

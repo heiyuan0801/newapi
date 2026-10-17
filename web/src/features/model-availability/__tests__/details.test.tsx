@@ -253,7 +253,7 @@ it('provides a named mobile-safe dialog and closes it with the keyboard', async 
     name: 'Model availability details',
   })
   expect(dialog).toHaveAccessibleDescription(
-    `${model.model_name} Group: default`
+    `${model.model_name} Real requests Group: default`
   )
   expect(dialog).toHaveClass('max-w-[calc(100%-2rem)]', 'overflow-y-auto')
   await userEvent.keyboard('{Escape}')
@@ -459,7 +459,7 @@ it('loads and caches independent summaries when the selected group changes for t
   view.rerender(details({ group: 'vip' }))
   expect(await screen.findByText('23.00%')).toBeVisible()
   expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
-    `${model.model_name} Group: vip`
+    `${model.model_name} Real requests Group: vip`
   )
   expect(request).toHaveBeenLastCalledWith('/api/perf-metrics', {
     params: { model: model.model_name, hours: 24, group: 'vip' },
@@ -523,4 +523,71 @@ it('leaves an unsampled group hourly timeline unknown without falling back to mo
     'No samples in this hour'
   )
   expect(screen.getByRole('tooltip')).not.toHaveTextContent('Success rate:')
+})
+
+it('keeps probe details separate from cached real-request data when the source changes', async () => {
+  const probeResponse: PerformanceMetricsData = {
+    ...response,
+    data: {
+      ...response.data,
+      summary: { success_rate: 20, avg_latency_ms: 3000, avg_tps: 0 },
+      series: [
+        {
+          ts: start,
+          success_rate: 20,
+          avg_latency_ms: 3000,
+          avg_ttft_ms: 0,
+          avg_tps: 0,
+        },
+      ],
+    },
+  }
+  const request = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/model-availability/monitor') {
+      return {
+        data: {
+          success: true,
+          data: {
+            probe: {
+              ...hourlyResponse.data,
+              group_models: [
+                {
+                  ...defaultGroupSummary,
+                  success_rate: 20,
+                  recent_success_series: [{ ts: start, success_rate: 20 }],
+                },
+              ],
+            },
+          },
+        },
+      }
+    }
+    return {
+      data: url === '/api/model-availability/probes' ? probeResponse : response,
+    }
+  })
+  const view = render(details())
+  expect(await screen.findByText('99.01%')).toBeVisible()
+  view.rerender(details({ source: 'probe' }))
+  const overview = await screen.findByLabelText('Overview')
+  await waitFor(() =>
+    expect(within(overview).getByText('20.00%')).toBeVisible()
+  )
+  expect(within(overview).queryByText('99.01%')).not.toBeInTheDocument()
+  expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
+    `${model.model_name} Active probes Group: default`
+  )
+  expect(request).toHaveBeenCalledWith('/api/model-availability/probes', {
+    params: { model: model.model_name, group: 'default', hours: 24 },
+  })
+  expect(
+    screen.queryByText('Sustained tokens per second')
+  ).not.toBeInTheDocument()
+  expect(
+    within(screen.getByRole('table', { name: 'Metrics samples' })).queryByText(
+      'TPS'
+    )
+  ).not.toBeInTheDocument()
+  view.rerender(details({ source: 'real' }))
+  expect(await screen.findByText('99.01%')).toBeVisible()
 })

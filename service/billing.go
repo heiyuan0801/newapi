@@ -76,6 +76,9 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 			return err
 		}
 
+		if actualQuota > 0 {
+			checkAndSendTokenBudgetNotify(relayInfo)
+		}
 		// 发送额度通知（订阅计费使用订阅剩余额度）
 		if actualQuota != 0 {
 			if relayInfo.BillingSource == BillingSourceSubscription {

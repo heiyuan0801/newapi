@@ -226,6 +226,14 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: "quota_not_enough",
 		}
 	}
+	if err := service.PreConsumeMidjourneyBudget(c, info, priceData.Quota); err != nil {
+		return &dto.MidjourneyResponse{Code: 4, Description: err.Error()}
+	}
+	defer func() {
+		if info.Billing != nil {
+			info.Billing.Refund(c)
+		}
+	}()
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
@@ -550,6 +558,16 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
+	if consumeQuota {
+		if err := service.PreConsumeMidjourneyBudget(c, relayInfo, priceData.Quota); err != nil {
+			return &dto.MidjourneyResponse{Code: 4, Description: err.Error()}
+		}
+	}
+	defer func() {
+		if relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(c)
+		}
+	}()
 	service.RequestPolicy(c).BeginAttempt(&model.Channel{Id: c.GetInt("channel_id")}, relayInfo.UsingGroup)
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	accepted := service.RecordMidjourneyPolicyResponse(c, midjResponseWithStatus, err)

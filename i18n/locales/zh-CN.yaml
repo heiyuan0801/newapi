@@ -74,3 +74,12 @@ channel.upstream_update_added_models: "新增模型示例（展示 {{.Shown}}/{{
 channel.upstream_update_removed_models: "删除模型示例（展示 {{.Shown}}/{{.Total}}）：{{.Models}}"
 channel.upstream_update_failed_channels: "失败渠道 ID（展示 {{.Shown}}/{{.Total}}）：{{.Ids}}"
 channel.upstream_update_more_omitted: "（其余 {{.Count}} 个已省略）"
+availability.fault_subject: "模型可用率告警"
+availability.fault_content: "模型 {{.Model}} 的 {{.Group}} 分组持续异常（来源：{{.Source}}，成功率：{{.Rate}}%），请查看模型可用率页面。"
+availability.recovery_subject: "模型可用率已恢复"
+availability.recovery_content: "模型 {{.Model}} 的 {{.Group}} 分组已恢复（来源：{{.Source}}，成功率：{{.Rate}}%），请查看模型可用率页面。"
+
+notify.token_budget_title: "API 令牌消费预算提醒"
+notify.token_budget_daily: "您的一个 API 令牌已使用至少 80% 的每日消费预算。预算耗尽后将暂停新请求，每日预算于 UTC 00:00 重置。"
+notify.token_budget_monthly: "您的一个 API 令牌已使用至少 80% 的每月消费预算。预算耗尽后将暂停新请求，每月预算于月初 UTC 00:00 重置。"
+quota.token_budget_exhausted: "API 令牌的每日或每月消费预算已耗尽"

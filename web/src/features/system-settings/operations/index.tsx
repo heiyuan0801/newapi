@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useStatus } from '@/hooks/use-status'
 
 import { SettingsPage } from '../components/settings-page'
+import { AVAILABILITY_MONITORING_DEFAULTS } from '../integrations/availability-monitoring-schema'
 import type { OperationsSettings } from '../types'
 import {
   OPERATIONS_DEFAULT_SECTION,
@@ -27,6 +28,7 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
+  ...AVAILABILITY_MONITORING_DEFAULTS,
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,

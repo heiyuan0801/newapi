@@ -25,7 +25,7 @@ export type AvailabilityStatus = 'healthy' | 'degraded' | 'critical' | 'unknown'
 export type AvailabilityCatalogModel = Pick<
   PricingModel,
   'model_name' | 'icon' | 'vendor_name' | 'vendor_icon'
-> & { enable_groups?: string[] }
+> & { enable_groups?: string[]; supported_endpoint_types?: string[] }
 
 export type AvailabilityModel = {
   model: AvailabilityCatalogModel

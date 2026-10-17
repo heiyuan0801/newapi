@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SupportTicketCreateButton } from '@/features/support-tickets/components/support-ticket-create-button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
@@ -266,6 +267,14 @@ export function BillingHistoryDialog({
                       </div>
 
                       {/* Admin Actions */}
+                      {!isAdmin && (
+                        <div className='mt-4 flex justify-end'>
+                          <SupportTicketCreateButton
+                            associationType='order'
+                            associationId={record.trade_no}
+                          />
+                        </div>
+                      )}
                       {isAdmin && record.status === 'pending' && (
                         <div className='mt-4 flex justify-end'>
                           <Button

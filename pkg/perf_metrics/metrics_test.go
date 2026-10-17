@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestClassifyRelayOutcome(t *testing.T) {
@@ -240,6 +241,47 @@ func TestPerformanceAggregationAndFlush(t *testing.T) {
 
 			flushCompletedBuckets()
 			flushCompletedBuckets()
+			t.Run("monitor snapshot remains complete during a flush", func(t *testing.T) {
+				key := bucketKey{model: "monitor-flush", group: "a", bucketTs: hour}
+				bucket := &atomicBucket{}
+				bucket.addCounters(counters{requestCount: 5, successCount: 1})
+				hotBuckets.Store(key, bucket)
+				defer hotBuckets.Delete(key)
+				entered, release, flushed := make(chan struct{}), make(chan struct{}), make(chan struct{})
+				require.NoError(t, db.Callback().Create().Before("gorm:create").Register("availability_monitor_pause", func(tx *gorm.DB) {
+					if row, ok := tx.Statement.Dest.(*model.PerfMetric); ok && row.ModelName == "monitor-flush" {
+						close(entered)
+						<-release
+					}
+				}))
+				t.Cleanup(func() { require.NoError(t, db.Callback().Create().Remove("availability_monitor_pause")) })
+				go func() { flushCompletedBuckets(); close(flushed) }()
+				select {
+				case <-entered:
+				case <-time.After(5 * time.Second):
+					t.Fatal("flush did not reach the database")
+				}
+				queried := make(chan struct{})
+				var rows []AvailabilityWindowCounts
+				var queryErr error
+				go func() { rows, queryErr = QueryAvailabilityWindow(hour, hour+3599, []string{"a"}); close(queried) }()
+				close(release)
+				select {
+				case <-queried:
+				case <-time.After(5 * time.Second):
+					t.Fatal("monitor snapshot did not complete")
+				}
+				<-flushed
+				require.NoError(t, queryErr)
+				var observed AvailabilityWindowCounts
+				for _, row := range rows {
+					if row.Model == "monitor-flush" {
+						observed = row
+					}
+				}
+				assert.Equal(t, AvailabilityWindowCounts{Model: "monitor-flush", Group: "a", Requests: 5, Successes: 1}, observed)
+				require.NoError(t, db.Where("model_name = ?", "monitor-flush").Delete(&model.PerfMetric{}).Error)
+			})
 			after, err := Query(QueryParams{Model: "test-model", Hours: 24, AllowedGroups: groups})
 			require.NoError(t, err)
 			assert.Equal(t, before.Summary, after.Summary)

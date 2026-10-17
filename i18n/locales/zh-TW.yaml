@@ -74,3 +74,12 @@ channel.upstream_update_added_models: "新增模型範例（顯示 {{.Shown}}/{{
 channel.upstream_update_removed_models: "刪除模型範例（顯示 {{.Shown}}/{{.Total}}）：{{.Models}}"
 channel.upstream_update_failed_channels: "失敗管道 ID（顯示 {{.Shown}}/{{.Total}}）：{{.Ids}}"
 channel.upstream_update_more_omitted: "（其餘 {{.Count}} 個已省略）"
+availability.fault_subject: "模型可用率告警"
+availability.fault_content: "模型 {{.Model}} 的 {{.Group}} 群組持續異常（來源：{{.Source}}，成功率：{{.Rate}}%），請查看模型可用率頁面。"
+availability.recovery_subject: "模型可用率已恢復"
+availability.recovery_content: "模型 {{.Model}} 的 {{.Group}} 群組已恢復（來源：{{.Source}}，成功率：{{.Rate}}%），請查看模型可用率頁面。"
+
+notify.token_budget_title: "API 權杖消費預算提醒"
+notify.token_budget_daily: "您的一個 API 權杖已使用至少 80% 的每日消費預算。預算耗盡後將暫停新請求，每日預算於 UTC 00:00 重設。"
+notify.token_budget_monthly: "您的一個 API 權杖已使用至少 80% 的每月消費預算。預算耗盡後將暫停新請求，每月預算於月初 UTC 00:00 重設。"
+quota.token_budget_exhausted: "API 權杖的每日或每月消費預算已耗盡"

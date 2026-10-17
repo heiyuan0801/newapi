@@ -36,8 +36,11 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import type { ModelAvailabilitySearch } from '@/routes/_authenticated/model-availability'
 
+import { getAvailabilityMonitor } from './api'
 import { AvailabilityDetails } from './components/availability-details'
+import { AvailabilityIncidents } from './components/availability-incidents'
 import { AvailabilityList } from './components/availability-list'
+import { AvailabilityMonitorStatus } from './components/availability-monitor-status'
 import { AvailabilitySummary } from './components/availability-summary'
 import { useAvailabilityCatalog } from './hooks/use-availability-catalog'
 import {
@@ -56,6 +59,9 @@ export function ModelAvailabilityPage() {
   return (
     <AvailabilityDashboard
       search={search}
+      onTest={(model, group) =>
+        void navigate({ to: '/playground', search: { model, group } })
+      }
       onSearchChange={(changes) => {
         void navigate({
           search: (previous) => ({ ...previous, ...changes }),
@@ -69,30 +75,46 @@ export function ModelAvailabilityPage() {
 export function AvailabilityDashboard(props: {
   search: ModelAvailabilitySearch
   onSearchChange: (changes: Partial<ModelAvailabilitySearch>) => void
+  onTest?: (model: string, group: string) => void
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const catalog = useAvailabilityCatalog()
-  const metricsQuery = useQuery({
+  const isProbe = props.search.source === 'probe'
+  const realMetricsQuery = useQuery({
     queryKey: ['model-availability-summary', props.search.hours],
     queryFn: async () =>
       requireServerSuccess(
         await getPerfMetricsSummary(props.search.hours, undefined, true)
       ),
     staleTime: 60 * 1000,
+    enabled: !isProbe,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
     retry: false,
     meta: { errorToast: false },
   })
+  const monitorQuery = useQuery({
+    queryKey: ['availability-monitor', props.search.hours],
+    queryFn: async () =>
+      requireServerSuccess(await getAvailabilityMonitor(props.search.hours)),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+    meta: { errorToast: false },
+  })
+  const metricsQuery = isProbe ? monitorQuery : realMetricsQuery
+  const metricsData = isProbe
+    ? monitorQuery.data?.data.probe
+    : realMetricsQuery.data?.data
   const [detailsModel, setDetailsModel] = useState<AvailabilityModel | null>(
     null
   )
   const models = useMemo(
     () =>
-      buildAvailabilityModels(
-        catalog.models,
-        metricsQuery.data?.data.group_models ?? []
-      ),
-    [catalog.models, metricsQuery.data]
+      buildAvailabilityModels(catalog.models, metricsData?.group_models ?? []),
+    [catalog.models, metricsData]
   )
   const filteredModels = useMemo(() => {
     const query = props.search.q.trim().toLowerCase()
@@ -118,7 +140,7 @@ export function AvailabilityDashboard(props: {
       ),
     [models]
   )
-  const ready = catalog.hasData && metricsQuery.data !== undefined
+  const ready = catalog.hasData && metricsData !== undefined
   const loading = catalog.isLoading || metricsQuery.isPending
   const refreshing = catalog.isFetching || metricsQuery.isFetching
   const failed = Boolean(catalog.error || metricsQuery.error)
@@ -140,18 +162,22 @@ export function AvailabilityDashboard(props: {
   })
   const window = useMemo(() => {
     const end =
-      metricsQuery.data?.data.window_end ??
+      metricsData?.window_end ??
       Math.floor((metricsQuery.dataUpdatedAt || Date.now()) / 1000)
     return {
       end,
       start:
-        metricsQuery.data?.data.window_start ??
+        metricsData?.window_start ??
         Math.floor(end / 3600) * 3600 - (props.search.hours - 1) * 3600,
     }
-  }, [metricsQuery.data, metricsQuery.dataUpdatedAt, props.search.hours])
+  }, [metricsData, metricsQuery.dataUpdatedAt, props.search.hours])
   const noSamples = models.filter((item) => item.status === 'unknown').length
   const refresh = () => {
-    void Promise.allSettled([catalog.refetch(), metricsQuery.refetch()])
+    void Promise.allSettled([
+      catalog.refetch(),
+      metricsQuery.refetch(),
+      ...(!isProbe ? [monitorQuery.refetch()] : []),
+    ])
   }
 
   return (
@@ -205,7 +231,11 @@ export function AvailabilityDashboard(props: {
           <div className='min-w-0 space-y-5'>
             <div className='text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs'>
               <p>
-                {t('Based on actual requests across the site.')}{' '}
+                {isProbe
+                  ? t(
+                      'Probe results are measured separately from real user requests.'
+                    )
+                  : t('Based on actual requests across the site.')}{' '}
                 {t('Each group is measured independently for the same model.')}
               </p>
               {ready && (
@@ -221,6 +251,14 @@ export function AvailabilityDashboard(props: {
                 </p>
               )}
             </div>
+            <AvailabilityMonitorStatus
+              source={isProbe ? 'probe' : 'real'}
+              data={monitorQuery.data?.data}
+              failed={monitorQuery.isError}
+              onSourceChange={(source) =>
+                props.onSearchChange({ source, page: 1 })
+              }
+            />
             <AvailabilitySummary
               models={models}
               loading={loading}
@@ -239,6 +277,7 @@ export function AvailabilityDashboard(props: {
               onRefresh={refresh}
               onSearchChange={props.onSearchChange}
               onDetails={setDetailsModel}
+              onTest={props.onTest}
             />
             <aside
               aria-label={t('Status thresholds')}
@@ -298,12 +337,18 @@ export function AvailabilityDashboard(props: {
                         count: noSamples,
                       }
                     )}{' '}
-                  {t(
-                    'Success rate excludes business rejections and includes the current partial hour.'
-                  )}
+                  {isProbe
+                    ? t('Probe results do not include real user requests.')
+                    : t(
+                        'Success rate excludes business rejections and includes the current partial hour.'
+                      )}
                 </span>
               </p>
             </aside>
+            <AvailabilityIncidents
+              key={props.search.group}
+              group={props.search.group}
+            />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
@@ -311,6 +356,7 @@ export function AvailabilityDashboard(props: {
         model={detailsModel?.model ?? null}
         group={detailsModel?.group ?? ''}
         hours={props.search.hours}
+        source={isProbe ? 'probe' : 'real'}
         open={detailsModel !== null}
         onOpenChange={(open) => {
           if (!open) setDetailsModel(null)

@@ -16,13 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, FlaskConical } from 'lucide-react'
 import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { getPlaygroundTestGroup } from '@/features/playground/lib/launch'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -47,6 +48,7 @@ import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 export interface ModelCardProps {
   model: PricingModel
   onClick: (modelName: string) => void
+  onTest?: (modelName: string, group: string) => void
   priceRate?: number
   usdExchangeRate?: number
   tokenUnit?: TokenUnit
@@ -57,6 +59,7 @@ export interface ModelCardProps {
 
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const { t, i18n } = useTranslation()
+  const testGroup = getPlaygroundTestGroup(props.model, props.selectedGroup)
   const tokenUnit = props.tokenUnit ?? DEFAULT_TOKEN_UNIT
   const priceRate = props.priceRate ?? 1
   const usdExchangeRate = props.usdExchangeRate ?? 1
@@ -398,6 +401,16 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           perf={props.perf}
           className='border-border/60 flex-wrap border-t pt-2'
         >
+          {props.onTest && testGroup && (
+            <Button
+              size='sm'
+              variant='outline'
+              onClick={() => props.onTest?.(props.model.model_name, testGroup)}
+            >
+              <FlaskConical aria-hidden className='size-3.5' />
+              {t('Test model')}
+            </Button>
+          )}
           <Button
             variant='ghost'
             size='sm'

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, FlaskConical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
@@ -32,6 +32,7 @@ import {
   formatLatency,
   getSuccessRateTextClass,
 } from '@/features/performance-metrics/lib/format'
+import { getPlaygroundTestGroup } from '@/features/playground/lib/launch'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -48,6 +49,7 @@ export function AvailabilityModelRow(props: {
   windowStart: number
   windowEnd: number
   onDetails: (item: AvailabilityModel) => void
+  onTest?: (model: string, group: string) => void
 }) {
   const { t } = useTranslation()
   const model = props.item.model
@@ -149,6 +151,21 @@ export function AvailabilityModelRow(props: {
                 <span className='font-mono text-sm tabular-nums'>
                   {formatLatency(item.metrics?.avg_latency_ms ?? Number.NaN)}
                 </span>
+                {props.onTest && getPlaygroundTestGroup(model, item.group) && (
+                  <Button
+                    size='sm'
+                    variant='ghost'
+                    className='mt-1 gap-1 px-0 text-xs'
+                    aria-label={t('Test {{model}} in {{group}}', {
+                      model: model.model_name,
+                      group: item.group,
+                    })}
+                    onClick={() => props.onTest?.(model.model_name, item.group)}
+                  >
+                    <FlaskConical aria-hidden className='size-3' />
+                    {t('Test model')}
+                  </Button>
+                )}
               </div>
             </div>
           ))}

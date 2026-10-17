@@ -36,6 +36,23 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
     .object({
       name: z.string().min(1, t('Please enter a name')),
       remain_quota_dollars: z.number().optional(),
+      daily_budget_amount: z
+        .number()
+        .min(0, t('Quota must be zero or greater'))
+        .refine(
+          (value) => Number.isSafeInteger(parseQuotaFromDollars(value)),
+          t('Spending budget is outside the allowed range')
+        )
+        .optional(),
+      monthly_budget_amount: z
+        .number()
+        .min(0, t('Quota must be zero or greater'))
+        .refine(
+          (value) => Number.isSafeInteger(parseQuotaFromDollars(value)),
+          t('Spending budget is outside the allowed range')
+        )
+        .optional(),
+      budget_reminder_enabled: z.boolean().optional(),
       expired_time: z.date().optional(),
       unlimited_quota: z.boolean(),
       model_limits: z.array(z.string()),
@@ -107,6 +124,9 @@ export type ApiKeyFormValues = z.infer<ReturnType<typeof getApiKeyFormSchema>>
 export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   name: '',
   remain_quota_dollars: 10,
+  daily_budget_amount: 0,
+  monthly_budget_amount: 0,
+  budget_reminder_enabled: false,
   expired_time: undefined,
   unlimited_quota: true,
   model_limits: [],
@@ -143,6 +163,9 @@ export function transformFormDataToPayload(
 ): ApiKeyFormData {
   return {
     name: data.name,
+    daily_budget: parseQuotaFromDollars(data.daily_budget_amount || 0),
+    monthly_budget: parseQuotaFromDollars(data.monthly_budget_amount || 0),
+    budget_reminder_enabled: !!data.budget_reminder_enabled,
     remain_quota: data.unlimited_quota
       ? 0
       : parseQuotaFromDollars(data.remain_quota_dollars || 0),
@@ -180,6 +203,9 @@ export function transformApiKeyToFormDefaults(
 
   return {
     name: apiKey.name,
+    daily_budget_amount: quotaUnitsToDollars(apiKey.daily_budget || 0),
+    monthly_budget_amount: quotaUnitsToDollars(apiKey.monthly_budget || 0),
+    budget_reminder_enabled: !!apiKey.budget_reminder_enabled,
     remain_quota_dollars: apiKey.unlimited_quota
       ? 0
       : quotaUnitsToDollars(apiKey.remain_quota),

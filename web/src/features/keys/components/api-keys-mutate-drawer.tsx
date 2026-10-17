@@ -88,6 +88,7 @@ import {
   transformApiKeyToFormDefaults,
 } from '../lib'
 import type { ApiKey } from '../types'
+import { ApiKeyBudgetFields } from './api-key-budget-fields'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -608,6 +609,8 @@ export function ApiKeysMutateDrawer({
                 />
               )}
             </SideDrawerSection>
+
+            <ApiKeyBudgetFields />
 
             <SideDrawerSection>
               <SideDrawerSectionHeader

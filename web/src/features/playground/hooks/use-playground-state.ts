@@ -42,11 +42,15 @@ const MESSAGE_SAVE_DEBOUNCE_MS = 500
 /**
  * Main state management hook for playground
  */
-export function usePlaygroundState() {
+export function usePlaygroundState(selection?: {
+  model: string
+  group: string
+}) {
   // Load initial state from localStorage
-  const [config, setConfig] = useState<PlaygroundConfig>(
-    getInitialPlaygroundConfig
-  )
+  const [config, setConfig] = useState<PlaygroundConfig>(() => ({
+    ...getInitialPlaygroundConfig(),
+    ...selection,
+  }))
 
   const [parameterEnabled, setParameterEnabled] = useState<ParameterEnabled>(
     getInitialParameterEnabled

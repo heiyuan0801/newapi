@@ -22,6 +22,7 @@ import z from 'zod'
 import { ModelAvailabilityPage } from '@/features/model-availability'
 
 export const modelAvailabilitySearchSchema = z.object({
+  source: z.enum(['real', 'probe']).catch('real'),
   hours: z.coerce
     .number()
     .pipe(z.union([z.literal(24), z.literal(168)]))

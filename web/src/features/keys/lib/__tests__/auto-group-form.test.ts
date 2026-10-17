@@ -209,3 +209,26 @@ describe('API key user quota query form mapping', () => {
     }
   )
 })
+
+describe('API key periodic budget form mapping', () => {
+  test('keeps periodic budgets on unlimited keys and converts their displayed amounts to quota units', () => {
+    const defaults = getApiKeyFormDefaultValues(false)
+    const values = {
+      ...defaults,
+      name: 'budgeted-key',
+      unlimited_quota: true,
+      daily_budget_amount: 2,
+      monthly_budget_amount: 20,
+      budget_reminder_enabled: true,
+    }
+    const payload = transformFormDataToPayload(values)
+    expect(payload.daily_budget).toBe(1_000_000)
+    expect(payload.monthly_budget).toBe(10_000_000)
+    expect(payload.unlimited_quota).toBe(true)
+    expect(payload.budget_reminder_enabled).toBe(true)
+    expect(
+      getApiKeyFormSchema(t).safeParse({ ...values, daily_budget_amount: -1 })
+        .success
+    ).toBe(false)
+  })
+})

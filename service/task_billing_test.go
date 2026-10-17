@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,8 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -64,6 +67,22 @@ func TestMain(m *testing.M) {
 		panic("failed to migrate: " + err.Error())
 	}
 
+	// Initialize the model's dialect column names through its production log
+	// setup path, while explicitly keeping this test process in memory.
+	previousLogDSN, hadLogDSN := os.LookupEnv("LOG_SQL_DSN")
+	previousMaster := common.IsMasterNode
+	_ = os.Unsetenv("LOG_SQL_DSN")
+	common.IsMasterNode = false
+	err = model.InitLogDB()
+	common.IsMasterNode = previousMaster
+	if hadLogDSN {
+		_ = os.Setenv("LOG_SQL_DSN", previousLogDSN)
+	} else {
+		_ = os.Unsetenv("LOG_SQL_DSN")
+	}
+	if err != nil {
+		panic("failed to initialize test model dialect: " + err.Error())
+	}
 	os.Exit(m.Run())
 }
 
@@ -1808,5 +1827,174 @@ func TestSettle_TokenRecalcFallsBackToCompletionTokens(t *testing.T) {
 			assert.Equal(t, testCase.wantSettled, settled)
 			assert.Equal(t, testCase.wantQuota, task.Quota)
 		})
+	}
+}
+
+func TestTokenBudgetDisablesTrustedBypassAndSettlesActualUsage(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 10_000_000)
+	seedToken(t, 1, 1, "budget-session-key", 10_000_000)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Updates(map[string]any{"unlimited_quota": true, "daily_budget": 100}).Error)
+	settings := operation_setting.GetQuotaSetting()
+	previousTrust := settings.TrustQuotaUSD
+	settings.TrustQuotaUSD = 1
+	defer func() { settings.TrustQuotaUSD = previousTrust }()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-session-key", TokenUnlimited: true, StartTime: time.Now(), UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
+	session, apiErr := NewBillingSession(c, info, 60)
+	require.Nil(t, apiErr)
+	assert.Equal(t, 60, session.GetPreConsumedQuota(), "unlimited keys cannot use trust to bypass a periodic cap")
+	require.NoError(t, session.Settle(40))
+	var token model.Token
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, int64(40), token.DailyBudgetUsed)
+	_, apiErr = NewBillingSession(c, info, 61)
+	require.NotNil(t, apiErr)
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, int64(40), token.DailyBudgetUsed)
+}
+
+func TestTokenBudgetFundingFailureCompensatesReservation(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 10)
+	seedToken(t, 1, 1, "budget-funding-key", 1000)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Updates(map[string]any{"daily_budget": 100}).Error)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-funding-key", StartTime: time.Now()}
+	session := &BillingSession{relayInfo: info, funding: &WalletFunding{userId: 1}}
+	require.NotNil(t, session.preConsume(c, 60))
+	var token model.Token
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, int64(0), token.DailyBudgetUsed)
+	assert.Equal(t, 1000, token.RemainQuota)
+}
+
+func TestTokenBudgetAdmissionUsesFirstReservationTimeInsteadOfOldHTTPStart(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 10_000_000)
+	seedToken(t, 1, 1, "budget-delayed-body-key", 10_000_000)
+	now := time.Now()
+	day, month := model.TokenBudgetPeriods(now.Unix())
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Updates(map[string]any{"daily_budget": 100, "daily_budget_start": day, "daily_budget_used": 100, "monthly_budget_start": month}).Error)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-delayed-body-key", StartTime: now.Add(-48 * time.Hour)}
+	err := PreConsumeTokenQuota(info, 1)
+	require.Error(t, err, "holding a request body across days cannot bypass today's cap")
+	assert.GreaterOrEqual(t, info.TokenBudgetStartedAt, day)
+}
+
+func TestTokenBudgetLegacyMidjourneyReservesBeforeSubmissionAndSettlesOnce(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 10_000_000)
+	seedToken(t, 1, 1, "budget-mj-reserve-key", 10_000_000)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Updates(map[string]any{"daily_budget": 100}).Error)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/mj/submit/imagine", nil)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-mj-reserve-key", StartTime: time.Now()}
+	require.NoError(t, PreConsumeMidjourneyBudget(c, info, 80))
+	task := &model.Midjourney{UserId: 1, ChannelId: 1, SubmitTime: time.Now().UnixMilli()}
+	prepared, err := PrepareMidjourneyTaskBilling(info, task, 80, true)
+	require.NoError(t, err)
+	require.True(t, prepared)
+	require.NoError(t, task.Insert())
+	applied, err := SettleMidjourneyTaskBilling(info, task, prepared)
+	require.NoError(t, err)
+	require.True(t, applied)
+	var token model.Token
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, int64(80), token.DailyBudgetUsed)
+	assert.Equal(t, 80, token.UsedQuota, "settlement must not consume twice")
+	assert.Equal(t, info.TokenBudgetStartedAt, task.TokenBudgetStartedAt)
+	require.False(t, info.Billing.NeedsRefund())
+	assert.Error(t, PreConsumeMidjourneyBudget(c, &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-mj-reserve-key"}, 21))
+}
+
+func TestTokenBudgetRealtimeOldConnectionCannotBypassCurrentPeriod(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 10_000_000)
+	seedToken(t, 1, 1, "budget-realtime-key", 10_000_000)
+	previousRatios := ratio_setting.ModelRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"budget-realtime-model":1}`))
+	defer func() { require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousRatios)) }()
+	now := time.Now()
+	day, month := model.TokenBudgetPeriods(now.Unix())
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Updates(map[string]any{"daily_budget": 100, "daily_budget_start": day, "daily_budget_used": 100, "monthly_budget_start": month}).Error)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+	old := now.Add(-48 * time.Hour)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-realtime-key", OriginModelName: "budget-realtime-model", UserGroup: "default", StartTime: old, TokenBudgetStartedAt: old.Unix(), ChannelMeta: &relaycommon.ChannelMeta{}}
+	info.UsingGroup = "default"
+	usage := &dto.RealtimeUsage{InputTokens: 1, TotalTokens: 1}
+	usage.InputTokenDetails.TextTokens = 1
+	require.Error(t, PreWssConsumeQuota(c, info, usage))
+	assert.Equal(t, old.Unix(), info.TokenBudgetStartedAt, "a cycle must keep its own reservation stamp local")
+	var token model.Token
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, int64(100), token.DailyBudgetUsed)
+	assert.Equal(t, 10_000_000, token.RemainQuota)
+}
+
+func TestTokenBudgetRealtimeCycleAndAggregateSettleChargeOnce(t *testing.T) {
+	for _, source := range []string{"wallet", "subscription", "legacy"} {
+		for _, previousDay := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s_cross_day_%t", source, previousDay), func(t *testing.T) {
+				truncate(t)
+				seedUser(t, 1, 10_000_000)
+				seedToken(t, 1, 1, "budget-realtime-settle-key", 10_000_000)
+				previousRatios := ratio_setting.ModelRatio2JSONString()
+				require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"budget-realtime-settle-model":1}`))
+				defer func() { require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousRatios)) }()
+				require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Updates(map[string]any{"daily_budget": 100, "monthly_budget": 1000}).Error)
+				at := time.Now()
+				if previousDay {
+					at = at.Add(-24 * time.Hour)
+				}
+				info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-realtime-settle-key", OriginModelName: "budget-realtime-settle-model", UserGroup: "default", StartTime: at, ChannelMeta: &relaycommon.ChannelMeta{}, PriceData: types.PriceData{ModelRatio: 1, GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1}}}
+				info.UsingGroup = "default"
+				if source != "legacy" {
+					reserved, err := model.TryReserveTokenQuota(1, "budget-realtime-settle-key", 30, false, at.Unix())
+					require.NoError(t, err)
+					require.True(t, reserved)
+					info.TokenBudgetStartedAt = at.Unix()
+					info.FinalPreConsumedQuota = 30
+					var funding FundingSource
+					if source == "wallet" {
+						require.NoError(t, model.DecreaseUserQuota(1, 30, false))
+						funding = &WalletFunding{userId: 1, consumed: 30}
+					} else {
+						seedSubscription(t, 1, 1, 1000, 30)
+						info.BillingSource = BillingSourceSubscription
+						info.SubscriptionId = 1
+						info.SubscriptionPreConsumed = 30
+						info.SubscriptionAmountTotal = 1000
+						info.SubscriptionAmountUsedAfterPreConsume = 30
+						funding = &SubscriptionFunding{subscriptionId: 1, preConsumed: 30}
+					}
+					info.Billing = &BillingSession{relayInfo: info, funding: funding, preConsumedQuota: 30, tokenConsumed: 30}
+				}
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+				usage := &dto.RealtimeUsage{InputTokens: 10, TotalTokens: 10}
+				usage.InputTokenDetails.TextTokens = 10
+				require.NoError(t, PreWssConsumeQuota(c, info, usage))
+				PostWssConsumeQuota(c, info, info.OriginModelName, usage, nil)
+				var token model.Token
+				require.NoError(t, model.DB.First(&token, 1).Error)
+				assert.Equal(t, int64(10), token.DailyBudgetUsed)
+				assert.Equal(t, int64(10), token.MonthlyBudgetUsed)
+				assert.Equal(t, 10, token.UsedQuota)
+				quota, err := model.GetUserQuota(1, true)
+				require.NoError(t, err)
+				if source == "subscription" {
+					assert.Equal(t, 10_000_000, quota)
+					var subscription model.UserSubscription
+					require.NoError(t, model.DB.First(&subscription, 1).Error)
+					assert.Equal(t, int64(10), subscription.AmountUsed)
+				} else {
+					assert.Equal(t, 10_000_000-10, quota, "cycle payment plus aggregate settlement must charge usage only once")
+				}
+			})
+		}
 	}
 }

@@ -49,6 +49,7 @@ export function AvailabilityList(props: {
   onRefresh: () => void
   onSearchChange: (changes: Partial<ModelAvailabilitySearch>) => void
   onDetails: (model: AvailabilityModel) => void
+  onTest?: (model: string, group: string) => void
 }) {
   const { t } = useTranslation()
   const [resetToken, setResetToken] = useState(0)
@@ -124,6 +125,7 @@ export function AvailabilityList(props: {
               windowStart={props.window.start}
               windowEnd={props.window.end}
               onDetails={props.onDetails}
+              onTest={props.onTest}
             />
           ))}
         </ul>

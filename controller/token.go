@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -36,12 +37,18 @@ type tokenRequest struct {
 	model.Token
 	AutoGroups tokenAutoGroupsInput `json:"auto_groups"`
 	// 指针区分“未传”和显式 false：新建时未传即开启，更新时未传则保留原值。
-	AllowUserQuotaQuery *bool `json:"allow_user_quota_query"`
+	AllowUserQuotaQuery   *bool  `json:"allow_user_quota_query"`
+	DailyBudget           *int64 `json:"daily_budget"`
+	MonthlyBudget         *int64 `json:"monthly_budget"`
+	BudgetReminderEnabled *bool  `json:"budget_reminder_enabled"`
 }
 
 type tokenResponse struct {
 	*model.Token
-	AutoGroups []string `json:"auto_groups"`
+	AutoGroups           []string `json:"auto_groups"`
+	BudgetPaused         bool     `json:"budget_paused"`
+	DailyBudgetResetAt   int64    `json:"daily_budget_reset_at"`
+	MonthlyBudgetResetAt int64    `json:"monthly_budget_reset_at"`
 }
 
 func maxTokenQuota() int {
@@ -68,7 +75,16 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if len(autoGroups) == 0 {
 		autoGroups = nil
 	}
-	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
+	day, month := model.TokenBudgetPeriods(common.GetTimestamp())
+	if maskedToken.DailyBudgetStart != day {
+		maskedToken.DailyBudgetUsed = 0
+	}
+	if maskedToken.MonthlyBudgetStart != month {
+		maskedToken.MonthlyBudgetUsed = 0
+	}
+	now := time.Unix(month, 0).UTC()
+	paused := maskedToken.DailyBudget > 0 && maskedToken.DailyBudgetUsed >= maskedToken.DailyBudget || maskedToken.MonthlyBudget > 0 && maskedToken.MonthlyBudgetUsed >= maskedToken.MonthlyBudget
+	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups, BudgetPaused: paused, DailyBudgetResetAt: day + 86400, MonthlyBudgetResetAt: now.AddDate(0, 1, 0).Unix()}
 }
 
 func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
@@ -304,6 +320,9 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	token := request.Token
+	if !setTokenBudgetRequest(c, &token, request) {
+		return
+	}
 	if len(token.Name) > 50 {
 		common.ApiErrorT(c, "Token name is too long")
 		return
@@ -348,20 +367,23 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:             c.GetInt("id"),
-		Name:               token.Name,
-		Key:                key,
-		CreatedTime:        common.GetTimestamp(),
-		AccessedTime:       common.GetTimestamp(),
-		ExpiredTime:        token.ExpiredTime,
-		RemainQuota:        token.RemainQuota,
-		UnlimitedQuota:     token.UnlimitedQuota,
-		ModelLimitsEnabled: token.ModelLimitsEnabled,
-		ModelLimits:        token.ModelLimits,
-		AllowIps:           token.AllowIps,
-		Group:              token.Group,
-		CrossGroupRetry:    token.CrossGroupRetry,
-		AutoGroups:         token.AutoGroups,
+		UserId:                c.GetInt("id"),
+		Name:                  token.Name,
+		Key:                   key,
+		CreatedTime:           common.GetTimestamp(),
+		AccessedTime:          common.GetTimestamp(),
+		ExpiredTime:           token.ExpiredTime,
+		RemainQuota:           token.RemainQuota,
+		UnlimitedQuota:        token.UnlimitedQuota,
+		ModelLimitsEnabled:    token.ModelLimitsEnabled,
+		ModelLimits:           token.ModelLimits,
+		AllowIps:              token.AllowIps,
+		Group:                 token.Group,
+		CrossGroupRetry:       token.CrossGroupRetry,
+		AutoGroups:            token.AutoGroups,
+		DailyBudget:           token.DailyBudget,
+		MonthlyBudget:         token.MonthlyBudget,
+		BudgetReminderEnabled: token.BudgetReminderEnabled,
 	}
 	cleanToken.AllowUserQuotaQuery = request.AllowUserQuotaQuery == nil || *request.AllowUserQuotaQuery
 	err = cleanToken.Insert()
@@ -448,6 +470,9 @@ func UpdateToken(c *gin.Context) {
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
+		if !setTokenBudgetRequest(c, cleanToken, request) {
+			return
+		}
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
@@ -493,6 +518,9 @@ func UpdateToken(c *gin.Context) {
 			{"allow_ips", (previous.AllowIps == nil) != (cleanToken.AllowIps == nil) ||
 				(previous.AllowIps != nil && cleanToken.AllowIps != nil && *previous.AllowIps != *cleanToken.AllowIps)},
 			{"allow_user_quota_query", previous.AllowUserQuotaQuery != cleanToken.AllowUserQuotaQuery},
+			{"daily_budget", previous.DailyBudget != cleanToken.DailyBudget},
+			{"monthly_budget", previous.MonthlyBudget != cleanToken.MonthlyBudget},
+			{"budget_reminder_enabled", previous.BudgetReminderEnabled != cleanToken.BudgetReminderEnabled},
 			{"group", previous.Group != cleanToken.Group},
 			{"cross_group_retry", previous.CrossGroupRetry != cleanToken.CrossGroupRetry},
 			{"auto_groups", previous.AutoGroups != cleanToken.AutoGroups},
@@ -572,4 +600,24 @@ func GetTokenKeysBatch(c *gin.Context) {
 	params["returned_ids"] = returnedIDs
 	common.SetContextKey(c, constant.ContextKeyTokenAuditSucceeded, true)
 	common.ApiSuccess(c, gin.H{"keys": keysMap})
+}
+
+// Budget counters and notification claims never come from the request body.
+func setTokenBudgetRequest(c *gin.Context, token *model.Token, request tokenRequest) bool {
+	for _, budget := range []*int64{request.DailyBudget, request.MonthlyBudget} {
+		if budget != nil && (*budget < 0 || *budget > int64(maxTokenQuota())) {
+			common.ApiErrorT(c, "Spending budget is outside the allowed range")
+			return false
+		}
+	}
+	if request.DailyBudget != nil {
+		token.DailyBudget = *request.DailyBudget
+	}
+	if request.MonthlyBudget != nil {
+		token.MonthlyBudget = *request.MonthlyBudget
+	}
+	if request.BudgetReminderEnabled != nil {
+		token.BudgetReminderEnabled = *request.BudgetReminderEnabled
+	}
+	return true
 }
