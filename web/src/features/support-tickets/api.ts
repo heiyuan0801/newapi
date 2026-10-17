@@ -19,6 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
+export type SupportPriority = 'low' | 'normal' | 'high' | 'urgent'
+export type TicketChange = {
+  status?: SupportStatus
+  priority?: SupportPriority
+  assigned_to_id?: number
+}
+export type TicketEvent = {
+  id: number
+  ticket_id: number
+  actor_type: string
+  kind: string
+  old_value: string
+  new_value: string
+  created_at: number
+}
+
 export type SupportStatus = 'open' | 'in_progress' | 'awaiting_user' | 'closed'
 export type SupportTicket = {
   id: number
@@ -33,6 +49,10 @@ export type SupportTicket = {
   reference_created_at: number
   created_at: number
   updated_at: number
+  assigned_to_id?: number
+  assigned_to_name?: string
+  priority?: SupportPriority
+  unread_count?: number
 }
 export type SupportMessage = {
   id: number
@@ -51,6 +71,10 @@ export type TicketList = {
 export type TicketDetail = {
   ticket: SupportTicket
   messages: SupportMessage[]
+  events?: TicketEvent[]
+  event_total?: number
+  event_page?: number
+  event_page_size?: number
   total: number
   page: number
   page_size: number
@@ -73,11 +97,15 @@ export async function listSupportTickets(params: {
       .data
   ).data
 }
-export async function getSupportTicket(id: number, page: number) {
+export async function getSupportTicket(
+  id: number,
+  page: number,
+  eventPage = 1
+) {
   return requireServerSuccess(
     (
       await api.get<Envelope<TicketDetail>>(`/api/support-tickets/${id}`, {
-        params: { page, page_size: 20 },
+        params: { page, page_size: 20, event_page: eventPage },
       })
     ).data
   ).data
@@ -104,6 +132,41 @@ export async function updateSupportTicket(id: number, status: SupportStatus) {
       await api.patch<Envelope<SupportTicket>>(`/api/support-tickets/${id}`, {
         status,
       })
+    ).data
+  ).data
+}
+
+export async function updateSupportTicketOperations(
+  id: number,
+  change: TicketChange
+) {
+  return requireServerSuccess(
+    (
+      await api.patch<Envelope<SupportTicket>>(
+        `/api/support-tickets/${id}`,
+        change
+      )
+    ).data
+  ).data
+}
+export async function markSupportTicketRead(id: number, messageID: number) {
+  return requireServerSuccess(
+    (
+      await api.post<Envelope<Record<string, never>>>(
+        `/api/support-tickets/${id}/read`,
+        { message_id: messageID }
+      )
+    ).data
+  ).data
+}
+export async function getSupportAssignees() {
+  return requireServerSuccess(
+    (
+      await api.get<
+        Envelope<{
+          items: { id: number; display_name: string; username: string }[]
+        }>
+      >('/api/support-tickets/assignees')
     ).data
   ).data
 }

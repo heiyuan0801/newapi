@@ -27,6 +27,7 @@ import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -223,6 +224,11 @@ export function SupportTicketsPage() {
                               {t('User ID')}: {ticket.user_id}
                             </span>
                           )}
+                          {ticket.assigned_to_name && (
+                            <span>
+                              {t('Assignee')}: {ticket.assigned_to_name}
+                            </span>
+                          )}
                           {ticket.reference_id && (
                             <span className='max-w-full break-all'>
                               {ticket.reference_type === 'request'
@@ -233,7 +239,14 @@ export function SupportTicketsPage() {
                           )}
                         </div>
                       </div>
-                      <SupportTicketStatus status={ticket.status} />
+                      <div className='flex shrink-0 flex-wrap items-center gap-2'>
+                        {Boolean(ticket.unread_count) && (
+                          <Badge>
+                            {t('Unread replies')}: {ticket.unread_count}
+                          </Badge>
+                        )}
+                        <SupportTicketStatus status={ticket.status} />
+                      </div>
                     </div>
                   </li>
                 ))}

@@ -313,7 +313,8 @@ func TestAccountToolsAuthenticationPolicy(t *testing.T) {
 	require.NoError(t, model.DB.Model(admin).Update("role", common.RoleAdminUser).Error)
 	usage, _ := createMiddlewareScopedToken(t, user.Id, 0, "usage:read")
 	wallet, _ := createMiddlewareScopedToken(t, user.Id, 0, "wallet:read")
-	adminPAT, _ := createMiddlewareScopedToken(t, admin.Id, 0, "ops:write", "usage:read", "wallet:write")
+	logPAT, _ := createMiddlewareScopedToken(t, user.Id, 0, "log:read")
+	adminPAT, _ := createMiddlewareScopedToken(t, admin.Id, 0, "ops:write", "usage:read", "wallet:write", "log:read")
 	sessionToken := func(account *model.User, sid string) string {
 		now := time.Now().Unix()
 		session := &model.UserSession{SID: sid, UserID: account.Id, Version: 1, UserAuthVersion: account.AuthVersion, Status: model.UserSessionStatusActive, RefreshHash: sid + "-hash", LoginMethod: "password", LastActiveAt: now, ExpiresAt: now + 3600}
@@ -328,6 +329,13 @@ func TestAccountToolsAuthenticationPolicy(t *testing.T) {
 		method, path, target, scope string
 		admin                       bool
 	}{
+		{"GET", "/api/model-availability/diagnostics", "/api/model-availability/diagnostics", "log", true},
+		{"GET", "/api/notification-deliveries", "/api/notification-deliveries", "log", true},
+		{"POST", "/api/notification-deliveries/test", "/api/notification-deliveries/test", "session", true},
+		{"GET", "/api/user/wallet/reconciliation", "/api/user/wallet/reconciliation", "wallet", false},
+		{"GET", "/api/user/wallet/monthly/export", "/api/user/wallet/monthly/export", "wallet", false},
+		{"GET", "/api/support-tickets/assignees", "/api/support-tickets/assignees", "session", true},
+		{"POST", "/api/support-tickets/:id/read", "/api/support-tickets/7/read", "session", false},
 		{"GET", "/api/model-availability/monitor", "/api/model-availability/monitor", "usage", false},
 		{"GET", "/api/model-availability/probes", "/api/model-availability/probes", "usage", false},
 		{"GET", "/api/model-availability/incidents", "/api/model-availability/incidents", "usage", false},
@@ -355,6 +363,7 @@ func TestAccountToolsAuthenticationPolicy(t *testing.T) {
 				{"anonymous", "", http.StatusUnauthorized},
 				{"usage", usage, http.StatusForbidden},
 				{"wallet", wallet, http.StatusForbidden},
+				{"log", logPAT, http.StatusForbidden},
 				{"admin-pat", adminPAT, http.StatusForbidden},
 				{"user-session", userSession, http.StatusNoContent},
 				{"admin-session", adminSession, http.StatusNoContent},
@@ -363,10 +372,10 @@ func TestAccountToolsAuthenticationPolicy(t *testing.T) {
 				if route.scope == credential.name {
 					want = http.StatusNoContent
 				}
-				if route.scope == "usage" && credential.name == "admin-pat" {
+				if (route.scope == "usage" || route.scope == "log") && credential.name == "admin-pat" {
 					want = http.StatusNoContent
 				}
-				if route.admin && credential.name == "user-session" {
+				if route.admin && credential.name != "admin-session" && credential.name != "admin-pat" && credential.name != "anonymous" {
 					want = http.StatusForbidden
 				}
 				request := httptest.NewRequest(route.method, route.target, nil)

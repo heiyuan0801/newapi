@@ -561,3 +561,33 @@ func TestSendEmailExplicitStartTLSRejectsUntrustedCertificateByDefault(t *testin
 	require.Error(t, err)
 	require.Contains(t, fmt.Sprint(err), "certificate")
 }
+
+func TestSMTPClientDeadlineBoundsUnresponsiveGreeting(t *testing.T) {
+	withSMTPSettings(t)
+	SMTPServer, SMTPPort, SMTPSSLEnabled, SMTPStartTLSEnabled = "127.0.0.1", 2525, false, false
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// No greeting: wait for the client deadline to close this connection.
+		var buffer [1]byte
+		_, _ = conn.Read(buffer[:])
+	}()
+	_, err = newSMTPClientWithDeadline(listener.Addr().String(), 50*time.Millisecond)
+	require.Error(t, err)
+	var timeout net.Error
+	require.ErrorAs(t, err, &timeout)
+	require.True(t, timeout.Timeout())
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed-out SMTP connection was not closed")
+	}
+}

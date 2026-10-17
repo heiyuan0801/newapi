@@ -16,11 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { SupportStatus } from './api'
+import type { SupportStatus, SupportPriority } from './api'
 
 export const supportStatusLabels: Record<SupportStatus, string> = {
   open: 'Awaiting support',
   in_progress: 'In progress',
   awaiting_user: 'Awaiting your reply',
   closed: 'Closed',
+}
+
+export const ticketPriorityLabels: Record<SupportPriority, string> = {
+  low: 'Low',
+  normal: 'Normal',
+  high: 'High',
+  urgent: 'Urgent',
 }

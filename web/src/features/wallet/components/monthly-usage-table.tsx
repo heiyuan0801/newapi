@@ -16,11 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  getCoreRowModel,
-  getPaginationRowModel,
-  useReactTable,
-} from '@tanstack/react-table'
+import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { DataTablePagination, StaticDataTable } from '@/components/data-table'
@@ -31,15 +27,37 @@ import { formatNumber } from '@/lib/format'
 
 import type { MonthlyUsageRow } from '../report-api'
 
-export function MonthlyUsageTable(props: { rows: MonthlyUsageRow[] }) {
+export function MonthlyUsageTable(props: {
+  rows: MonthlyUsageRow[]
+  page?: number
+  pageSize?: number
+  total?: number
+  disabled?: boolean
+  onPageChange?: (page: number) => void
+}) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const table = useReactTable({
     data: props.rows,
     columns: [],
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageIndex: 0, pageSize: 10 } },
+    manualPagination: true,
+    rowCount: props.total ?? props.rows.length,
+    state: {
+      pagination: {
+        pageIndex: (props.page ?? 1) - 1,
+        pageSize: props.pageSize ?? 50,
+      },
+    },
+    onPaginationChange: (updater) => {
+      if (props.disabled) return
+      const previous = {
+        pageIndex: (props.page ?? 1) - 1,
+        pageSize: props.pageSize ?? 50,
+      }
+      const next = typeof updater === 'function' ? updater(previous) : updater
+      props.onPageChange?.(next.pageIndex + 1)
+    },
   })
   return (
     <div className='min-w-0 space-y-3'>
@@ -94,7 +112,9 @@ export function MonthlyUsageTable(props: { rows: MonthlyUsageRow[] }) {
           },
         ]}
       />
-      <DataTablePagination table={table} compact />
+      <fieldset disabled={props.disabled}>
+        <DataTablePagination table={table} compact />
+      </fieldset>
     </div>
   )
 }

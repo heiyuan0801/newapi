@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -51,13 +51,18 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import {
   getSupportTicket,
+  markSupportTicketRead,
+  updateSupportTicketOperations,
+  type TicketChange,
   replySupportTicket,
   updateSupportTicket,
   type SupportStatus,
 } from '../api'
 import { supportStatusLabels } from '../constants'
 import { SupportTicketStatus } from './support-ticket-status'
+import { TicketOperations } from './ticket-operations'
 import { TicketPagination } from './ticket-pagination'
+import { TicketTimeline } from './ticket-timeline'
 
 const schema = z.object({ body: z.string().trim().min(1).max(4000) })
 const statuses: SupportStatus[] = [
@@ -76,17 +81,60 @@ export function TicketConversationDialog(props: {
   const admin = useIsAdmin()
   const client = useQueryClient()
   const [page, setPage] = useState(1)
+  const [eventPage, setEventPage] = useState(1)
+  const lastRead = useRef(0)
+  const readAttempt = useRef(0)
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: { body: '' },
   })
   const query = useQuery({
-    queryKey: ['support-tickets', 'detail', props.id, page],
-    queryFn: () => getSupportTicket(props.id, page),
+    queryKey: ['support-tickets', 'detail', props.id, page, eventPage],
+    queryFn: () => getSupportTicket(props.id, page, eventPage),
     retry: false,
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
   })
+  const operations = useMutation({
+    mutationFn: (change: TicketChange) =>
+      updateSupportTicketOperations(props.id, change),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['support-tickets'] })
+    },
+  })
+  const read = useMutation({
+    mutationFn: (messageID: number) =>
+      markSupportTicketRead(props.id, messageID),
+    onSuccess: (_, messageID) => {
+      lastRead.current = Math.max(lastRead.current, messageID)
+      void client.invalidateQueries({ queryKey: ['support-tickets', 'list'] })
+    },
+  })
+  const markRead = read.mutate
+  useEffect(() => {
+    const messageID = Math.max(
+      0,
+      ...(query.data?.messages ?? []).map((message) => message.id)
+    )
+    if (
+      query.isFetching ||
+      !query.isSuccess ||
+      read.isPending ||
+      messageID <= lastRead.current ||
+      query.dataUpdatedAt === readAttempt.current
+    ) {
+      return
+    }
+    readAttempt.current = query.dataUpdatedAt
+    markRead(messageID)
+  }, [
+    query.data?.messages,
+    query.dataUpdatedAt,
+    query.isFetching,
+    query.isSuccess,
+    read.isPending,
+    markRead,
+  ])
   const update = useMutation({
     mutationFn: (status: SupportStatus) =>
       updateSupportTicket(props.id, status),
@@ -103,7 +151,7 @@ export function TicketConversationDialog(props: {
     },
   })
   const ticket = query.data?.ticket
-  const pending = update.isPending || reply.isPending
+  const pending = update.isPending || reply.isPending || operations.isPending
   const statusItems = statuses.map((value) => ({
     value,
     label: t(supportStatusLabels[value]),
@@ -129,11 +177,11 @@ export function TicketConversationDialog(props: {
       )}
       {ticket && query.data && (
         <>
-          {(reply.isError || update.isError) && (
+          {(reply.isError || update.isError || operations.isError) && (
             <Alert variant='destructive'>
               <AlertDescription>
                 {getServerErrorMessage(
-                  reply.error || update.error,
+                  reply.error || update.error || operations.error,
                   t('Unable to update support tickets')
                 )}
               </AlertDescription>
@@ -181,6 +229,19 @@ export function TicketConversationDialog(props: {
               </Button>
             )}
           </div>
+          <TicketOperations
+            ticket={ticket}
+            admin={admin}
+            pending={pending}
+            onChange={(change) => operations.mutate(change)}
+          />
+          <TicketTimeline
+            events={query.data.events ?? []}
+            total={query.data.event_total ?? 0}
+            page={eventPage}
+            pending={query.isFetching}
+            onPageChange={setEventPage}
+          />
           {ticket.reference_id && (
             <dl className='bg-muted/30 space-y-2 rounded-xl border p-3 text-sm'>
               <div className='flex flex-wrap items-center gap-2'>
@@ -215,6 +276,13 @@ export function TicketConversationDialog(props: {
                 )}
               </AlertDescription>
             </Alert>
+          )}
+          {read.isError && (
+            <p role='status' className='text-muted-foreground text-xs'>
+              {t(
+                'Unable to mark replies as read. It will retry after the next refresh.'
+              )}
+            </p>
           )}
           <ol aria-label={t('Ticket conversation')} className='space-y-3'>
             {query.data.messages.map((message) => (

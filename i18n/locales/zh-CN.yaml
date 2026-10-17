@@ -83,3 +83,8 @@ notify.token_budget_title: "API 令牌消费预算提醒"
 notify.token_budget_daily: "您的一个 API 令牌已使用至少 80% 的每日消费预算。预算耗尽后将暂停新请求，每日预算于 UTC 00:00 重置。"
 notify.token_budget_monthly: "您的一个 API 令牌已使用至少 80% 的每月消费预算。预算耗尽后将暂停新请求，每月预算于月初 UTC 00:00 重置。"
 quota.token_budget_exhausted: "API 令牌的每日或每月消费预算已耗尽"
+
+notification.test_subject: "通知投递测试"
+notification.test_content: "这是来自您管理员账号的测试通知。"
+notification.ticket_reply_subject: "工单有新回复"
+notification.ticket_reply_content: "您的工单 #{{.TicketID}} 有新回复，请在控制台打开 {{.Link}}。"

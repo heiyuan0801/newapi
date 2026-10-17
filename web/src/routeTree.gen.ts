@@ -27,6 +27,7 @@ import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
+import { Route as AuthenticatedGettingStartedRouteImport } from './routes/_authenticated/getting-started'
 import { Route as AuthenticatedModelAvailabilityRouteImport } from './routes/_authenticated/model-availability'
 import { Route as AuthenticatedSupportTicketsRouteImport } from './routes/_authenticated/support-tickets'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
@@ -164,6 +165,12 @@ const AuthenticatedChat2linkRoute = AuthenticatedChat2linkRouteImport.update({
   path: '/chat2link',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedGettingStartedRoute =
+  AuthenticatedGettingStartedRouteImport.update({
+    id: '/getting-started',
+    path: '/getting-started',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedModelAvailabilityRoute =
   AuthenticatedModelAvailabilityRouteImport.update({
     id: '/model-availability',
@@ -461,6 +468,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/getting-started': typeof AuthenticatedGettingStartedRoute
   '/model-availability': typeof AuthenticatedModelAvailabilityRoute
   '/support-tickets': typeof AuthenticatedSupportTicketsRoute
   '/oauth/$provider': typeof OauthProviderRoute
@@ -526,6 +534,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/getting-started': typeof AuthenticatedGettingStartedRoute
   '/model-availability': typeof AuthenticatedModelAvailabilityRoute
   '/support-tickets': typeof AuthenticatedSupportTicketsRoute
   '/oauth/$provider': typeof OauthProviderRoute
@@ -595,6 +604,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
+  '/_authenticated/getting-started': typeof AuthenticatedGettingStartedRoute
   '/_authenticated/model-availability': typeof AuthenticatedModelAvailabilityRoute
   '/_authenticated/support-tickets': typeof AuthenticatedSupportTicketsRoute
   '/oauth/$provider': typeof OauthProviderRoute
@@ -663,6 +673,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/getting-started'
     | '/model-availability'
     | '/support-tickets'
     | '/oauth/$provider'
@@ -728,6 +739,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/getting-started'
     | '/model-availability'
     | '/support-tickets'
     | '/oauth/$provider'
@@ -796,6 +808,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/chat2link'
+    | '/_authenticated/getting-started'
     | '/_authenticated/model-availability'
     | '/_authenticated/support-tickets'
     | '/oauth/$provider'
@@ -990,6 +1003,13 @@ declare module '@tanstack/react-router' {
       path: '/chat2link'
       fullPath: '/chat2link'
       preLoaderRoute: typeof AuthenticatedChat2linkRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/getting-started': {
+      id: '/_authenticated/getting-started'
+      path: '/getting-started'
+      fullPath: '/getting-started'
+      preLoaderRoute: typeof AuthenticatedGettingStartedRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/model-availability': {
@@ -1423,6 +1443,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedGettingStartedRoute: typeof AuthenticatedGettingStartedRoute
   AuthenticatedModelAvailabilityRoute: typeof AuthenticatedModelAvailabilityRoute
   AuthenticatedSupportTicketsRoute: typeof AuthenticatedSupportTicketsRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
@@ -1452,6 +1473,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedGettingStartedRoute: AuthenticatedGettingStartedRoute,
   AuthenticatedModelAvailabilityRoute: AuthenticatedModelAvailabilityRoute,
   AuthenticatedSupportTicketsRoute: AuthenticatedSupportTicketsRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,

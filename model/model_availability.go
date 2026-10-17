@@ -19,10 +19,11 @@ const (
 type AvailabilityProbeSample struct {
 	ID         int64  `json:"-" gorm:"primaryKey"`
 	SampleKey  string `json:"-" gorm:"size:64;uniqueIndex"`
-	PairKey    string `json:"-" gorm:"size:64;index"`
+	PairKey    string `json:"-" gorm:"size:64;index;index:idx_availability_probe_pair_checked,priority:1"`
 	ModelName  string `json:"model_name" gorm:"size:255"`
 	Group      string `json:"group" gorm:"size:64"`
-	CheckedAt  int64  `json:"checked_at" gorm:"index"`
+	CheckedAt  int64  `json:"checked_at" gorm:"index;index:idx_availability_probe_pair_checked,priority:2"`
+	ChannelID  int    `json:"-" gorm:"default:0"`
 	Outcome    string `json:"outcome" gorm:"size:16"`
 	LatencyMs  int64  `json:"latency_ms"`
 	ReasonCode string `json:"reason_code" gorm:"size:32"`
@@ -32,22 +33,24 @@ type AvailabilityProbeSample struct {
 // and resolved records are projected to users. Nullable ActiveKey allows one
 // pending/open record per source/model/group and many completed incidents.
 type AvailabilityIncident struct {
-	ID                 int64   `json:"id" gorm:"primaryKey"`
-	PairKey            string  `json:"-" gorm:"size:64;index"`
-	ActiveKey          *string `json:"-" gorm:"size:64;uniqueIndex"`
-	ModelName          string  `json:"model_name" gorm:"size:255"`
-	Group              string  `json:"group" gorm:"size:64"`
-	Source             string  `json:"source" gorm:"size:16"`
-	Status             string  `json:"status" gorm:"size:16;index"`
-	StartedAt          int64   `json:"started_at" gorm:"index"`
-	LastObservedAt     int64   `json:"last_observed_at"`
-	ResolvedAt         int64   `json:"resolved_at" gorm:"index"`
-	SuccessRate        float64 `json:"success_rate"`
-	ReasonCode         string  `json:"reason_code" gorm:"size:32"`
-	Failures           int     `json:"-"`
-	Recoveries         int     `json:"-"`
-	NotifiedAt         int64   `json:"-"`
-	RecoveryNotifiedAt int64   `json:"-"`
+	ID                         int64   `json:"id" gorm:"primaryKey"`
+	PairKey                    string  `json:"-" gorm:"size:64;index"`
+	ActiveKey                  *string `json:"-" gorm:"size:64;uniqueIndex"`
+	ModelName                  string  `json:"model_name" gorm:"size:255"`
+	Group                      string  `json:"group" gorm:"size:64"`
+	Source                     string  `json:"source" gorm:"size:16"`
+	Status                     string  `json:"status" gorm:"size:16;index"`
+	StartedAt                  int64   `json:"started_at" gorm:"index"`
+	LastObservedAt             int64   `json:"last_observed_at"`
+	ResolvedAt                 int64   `json:"resolved_at" gorm:"index"`
+	SuccessRate                float64 `json:"success_rate"`
+	ReasonCode                 string  `json:"reason_code" gorm:"size:32"`
+	Failures                   int     `json:"-"`
+	Recoveries                 int     `json:"-"`
+	NotifiedAt                 int64   `json:"-"`
+	RecoveryNotifiedAt         int64   `json:"-"`
+	NotificationStatus         string  `json:"notification_status" gorm:"-"`
+	RecoveryNotificationStatus string  `json:"recovery_notification_status" gorm:"-"`
 }
 
 type AvailabilityPair struct {
@@ -195,6 +198,30 @@ func ListAvailabilityIncidents(ctx context.Context, filter AvailabilityIncidentF
 		return nil, 0, err
 	}
 	err := query.Order("started_at DESC, id DESC").Offset((max(filter.Page, 1) - 1) * filter.PageSize).Limit(filter.PageSize).Find(&items).Error
+	if err != nil || len(items) == 0 {
+		return items, total, err
+	}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	var deliveries []NotificationDelivery
+	if err := DB.WithContext(ctx).Select("incident_id", "kind", "status").Where("incident_id IN ?", ids).Find(&deliveries).Error; err != nil {
+		return nil, 0, err
+	}
+	for i := range items {
+		items[i].NotificationStatus, items[i].RecoveryNotificationStatus = "not_requested", "not_requested"
+		for _, delivery := range deliveries {
+			if delivery.IncidentID != items[i].ID {
+				continue
+			}
+			if delivery.Kind == "availability_fault" {
+				items[i].NotificationStatus = delivery.Status
+			} else if delivery.Kind == "availability_recovery" {
+				items[i].RecoveryNotificationStatus = delivery.Status
+			}
+		}
+	}
 	return items, total, err
 }
 
@@ -224,8 +251,8 @@ type AvailabilityNotification struct {
 }
 
 // ApplyAvailabilityObservation consumes a non-overlapping observation once.
-// Notification claims are persisted in the same transaction as transitions;
-// delivery is best-effort, and a process restart cannot send duplicate claims.
+// The notification intent is committed atomically with the incident transition.
+// Provider acceptance and retry state are tracked separately by the outbox.
 func ApplyAvailabilityObservation(ctx context.Context, observation AvailabilityObservation, policy AvailabilityAlertPolicy, now int64) (*AvailabilityNotification, error) {
 	if observation.Source != "real" && observation.Source != "probe" {
 		return nil, errors.New("invalid availability source")
@@ -303,6 +330,12 @@ func ApplyAvailabilityObservation(ctx context.Context, observation AvailabilityO
 		}
 		if notification != nil {
 			notification.Incident = incident
+			kind := "availability_fault"
+			if notification.Recovery {
+				kind = "availability_recovery"
+			}
+			_, err := EnqueueNotificationDeliveryTx(tx, NotificationDeliveryDraft{EventKey: AvailabilityNotificationEventKey(incident.ID, notification.Recovery), Kind: kind, IncidentID: incident.ID, ModelName: incident.ModelName, Group: incident.Group, Source: incident.Source, SuccessRate: incident.SuccessRate}, now)
+			return err
 		}
 		return nil
 	})

@@ -84,7 +84,7 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
   }
 }
 
-async function renderCreateDrawer(): Promise<void> {
+async function renderCreateDrawer(initialGroup?: string): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -125,7 +125,11 @@ async function renderCreateDrawer(): Promise<void> {
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>
         <ApiKeysProvider>
-          <ApiKeysMutateDrawer open onOpenChange={() => undefined} />
+          <ApiKeysMutateDrawer
+            open
+            onOpenChange={() => undefined}
+            initialGroup={initialGroup}
+          />
         </ApiKeysProvider>
       </I18nextProvider>
     </QueryClientProvider>
@@ -204,6 +208,25 @@ afterEach(() => {
 })
 
 describe('API keys mutate drawer Auto group integration', () => {
+  test('uses the guide-selected allowed group without expanding the server-provided group list', async () => {
+    const payloads: Array<Record<string, unknown>> = []
+    installApiFixtures(payloads)
+    await renderCreateDrawer('vip')
+    expect(getControlByLabel('Group')).toHaveTextContent('vip')
+    changeInput(getControlByLabel('Name'), 'guide-key')
+    fireEvent.click(findButton('Save changes', true))
+    await waitFor(() => expect(payloads).toHaveLength(1))
+    expect(payloads[0].group).toBe('vip')
+  })
+
+  test('ignores a guide-selected group that is not in the server-provided group list', async () => {
+    installApiFixtures([])
+    await renderCreateDrawer('private-unavailable')
+    expect(getControlByLabel('Group')).toHaveTextContent('auto')
+    expect(getControlByLabel('Group')).not.toHaveTextContent(
+      'private-unavailable'
+    )
+  })
   test('inherits the root Auto order and sends an empty override for every batch-created key', async () => {
     const createdPayloads: Array<Record<string, unknown>> = []
     installApiFixtures(createdPayloads)

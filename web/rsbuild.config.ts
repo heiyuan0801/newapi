@@ -39,7 +39,8 @@ export default defineConfig(({ envMode }) => {
         'vendor-ui-primitives': {
           test: /node_modules[\\/](@base-ui|@radix-ui)[\\/]/,
           name: 'vendor-ui-primitives',
-          chunks: 'all',
+          // Keep primitives used only by deferred routes out of the first page.
+          chunks: 'initial',
           priority: 0,
           enforce: true,
         },

@@ -68,6 +68,11 @@ export function useSidebarData(): SidebarData {
             icon: LayoutDashboard,
           },
           {
+            title: t('Getting started'),
+            url: '/getting-started',
+            icon: FlaskConical,
+          },
+          {
             title: t('API Keys'),
             url: '/keys',
             icon: Key,

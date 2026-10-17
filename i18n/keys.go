@@ -105,3 +105,10 @@ const (
 	MsgTokenBudgetMonthly          = "notify.token_budget_monthly"
 	MsgTokenBudgetExhausted        = "quota.token_budget_exhausted"
 )
+
+const (
+	MsgNotificationTestSubject        = "notification.test_subject"
+	MsgNotificationTestContent        = "notification.test_content"
+	MsgNotificationTicketReplySubject = "notification.ticket_reply_subject"
+	MsgNotificationTicketReplyContent = "notification.ticket_reply_content"
+)

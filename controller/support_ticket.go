@@ -96,7 +96,17 @@ func GetSupportTicket(c *gin.Context) {
 		supportTicketError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"ticket": ticket, "messages": messages, "total": total, "page": page, "page_size": pageSize})
+	eventPage, err := strconv.Atoi(c.DefaultQuery("event_page", "1"))
+	if err != nil || eventPage < 1 || eventPage > 100000 {
+		supportTicketError(c, model.ErrSupportTicketInput)
+		return
+	}
+	events, eventTotal, err := model.GetSupportTicketEvents(c.Request.Context(), id, eventPage, 20)
+	if err != nil {
+		supportTicketError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"ticket": ticket, "messages": messages, "total": total, "page": page, "page_size": pageSize, "events": events, "event_total": eventTotal, "event_page": eventPage, "event_page_size": 20})
 }
 
 func ReplySupportTicket(c *gin.Context) {
@@ -113,14 +123,60 @@ func ReplySupportTicket(c *gin.Context) {
 
 func UpdateSupportTicket(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16384)
-	var input struct {
-		Status string `json:"status"`
-	}
+	var input model.SupportTicketChange
 	if err := c.ShouldBindJSON(&input); err != nil {
 		supportTicketError(c, model.ErrSupportTicketInput)
 		return
 	}
-	changeSupportTicket(c, input.Status, "")
+	if (input.Priority != "" || input.AssignedToID != nil) && c.GetInt("role") < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Unauthorized, insufficient privileges"})
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		supportTicketError(c, model.ErrSupportTicketInput)
+		return
+	}
+	ticket, err := model.ChangeSupportTicketOperations(c.Request.Context(), id, c.GetInt("id"), c.GetInt("role") >= common.RoleAdminUser, input)
+	if err != nil {
+		supportTicketError(c, err)
+		return
+	}
+	common.ApiSuccess(c, ticket)
+}
+
+func MarkSupportTicketRead(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var input struct {
+		MessageID int `json:"message_id"`
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 || c.ShouldBindJSON(&input) != nil {
+		supportTicketError(c, model.ErrSupportTicketInput)
+		return
+	}
+	if err := model.MarkSupportTicketRead(c.Request.Context(), id, c.GetInt("id"), c.GetInt("role") >= common.RoleAdminUser, input.MessageID); err != nil {
+		supportTicketError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{})
+}
+
+func ListSupportTicketAssignees(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Unauthorized, insufficient privileges"})
+		return
+	}
+	var items []struct {
+		ID          int    `json:"id"`
+		DisplayName string `json:"display_name"`
+		Username    string `json:"username"`
+	}
+	if err := model.DB.WithContext(c.Request.Context()).Model(&model.User{}).Select("id", "display_name", "username").Where("role >= ? AND status = ?", common.RoleAdminUser, common.UserStatusEnabled).Order("id ASC").Limit(100).Scan(&items).Error; err != nil {
+		supportTicketError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"items": items})
 }
 
 func changeSupportTicket(c *gin.Context, status, body string) {

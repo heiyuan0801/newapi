@@ -46,10 +46,13 @@ func SetApiRouter(router *gin.Engine) {
 		availabilityRoute := apiRouter.Group("/model-availability", middleware.UserAuth())
 		{
 			availabilityRoute.GET("/monitor", controller.GetAvailabilityMonitor)
+			availabilityRoute.GET("/diagnostics", middleware.AdminAuth(), controller.GetAvailabilityDiagnostics)
 			availabilityRoute.GET("/probes", controller.GetAvailabilityProbes)
 			availabilityRoute.GET("/incidents", controller.GetAvailabilityIncidents)
 			availabilityRoute.POST("/probe", middleware.AdminAuth(), controller.RunAvailabilityProbe)
 		}
+		apiRouter.GET("/notification-deliveries", middleware.AdminAuth(), middleware.DisableCache(), controller.GetNotificationDeliveries)
+		apiRouter.POST("/notification-deliveries/test", middleware.AdminAuth(), middleware.UserCriticalRateLimit("notification-test"), controller.TestNotificationDelivery)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ResetPassword)
@@ -83,7 +86,9 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			supportRoute.GET("", controller.ListSupportTickets)
 			supportRoute.POST("", middleware.UserCriticalRateLimit("support-tickets"), controller.CreateSupportTicket)
+			supportRoute.GET("/assignees", middleware.AdminAuth(), controller.ListSupportTicketAssignees)
 			supportRoute.GET("/:id", controller.GetSupportTicket)
+			supportRoute.POST("/:id/read", middleware.UserCriticalRateLimit("support-tickets-read"), controller.MarkSupportTicketRead)
 			supportRoute.PATCH("/:id", middleware.UserCriticalRateLimit("support-tickets"), controller.UpdateSupportTicket)
 			supportRoute.POST("/:id/replies", middleware.UserCriticalRateLimit("support-tickets"), controller.ReplySupportTicket)
 		}
@@ -136,6 +141,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/aff/rewards", controller.GetAffiliateRewards)
 				selfRoute.GET("/wallet/monthly", controller.GetMonthlyWalletReport)
+				selfRoute.GET("/wallet/monthly/export", middleware.UserCriticalRateLimit("monthly-export"), controller.ExportMonthlyWalletReport)
+				selfRoute.GET("/wallet/reconciliation", controller.GetWalletReconciliation)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)

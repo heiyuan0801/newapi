@@ -51,6 +51,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { getUserModels } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { MOTION_TRANSITION } from '@/lib/motion'
@@ -463,6 +464,7 @@ function CompactQuickAction(props: { action: QuickAction }) {
 
 export function OverviewDashboard() {
   const { t } = useTranslation()
+  const guideVisible = useIsSidebarModuleVisible('/keys')
   const setupGuideId = useId()
   const setupGuideToggleRef = useRef<HTMLButtonElement>(null)
   const user = useAuthStore((state) => state.auth.user)
@@ -648,6 +650,15 @@ export function OverviewDashboard() {
         </span>
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        {guideVisible && (
+          <Button
+            variant='outline'
+            size='sm'
+            render={<Link to='/getting-started' />}
+          >
+            {t('API connection guide')}
+          </Button>
+        )}
         {setupStatusReady && setupComplete && (
           <Button
             ref={setupGuideToggleRef}

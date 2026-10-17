@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/smtp"
 	"slices"
 	"strings"
@@ -42,25 +43,32 @@ func smtpTLSConfig() *tls.Config {
 }
 
 func newSMTPClient(addr string) (*smtp.Client, error) {
-	if SMTPSSLEnabled || (SMTPPort == 465 && !SMTPStartTLSEnabled) {
-		conn, err := tls.Dial("tcp", addr, smtpTLSConfig())
-		if err != nil {
-			return nil, err
-		}
-		client, err := smtp.NewClient(conn, SMTPServer)
-		if err != nil {
-			_ = conn.Close()
-			return nil, err
-		}
-		return client, nil
-	}
+	return newSMTPClientWithDeadline(addr, 30*time.Second)
+}
 
-	client, err := smtp.Dial(addr)
+func newSMTPClientWithDeadline(addr string, timeout time.Duration) (*smtp.Client, error) {
+	deadline := time.Now().Add(timeout)
+	dialer := &net.Dialer{Timeout: min(timeout, 15*time.Second)}
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
+	// Bound the full greeting/TLS/auth/DATA conversation as well as the dial.
+	if err := conn.SetDeadline(deadline); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	implicitTLS := SMTPSSLEnabled || (SMTPPort == 465 && !SMTPStartTLSEnabled)
+	if implicitTLS {
+		conn = tls.Client(conn, smtpTLSConfig())
+	}
+	client, err := smtp.NewClient(conn, SMTPServer)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 
-	if SMTPStartTLSEnabled {
+	if SMTPStartTLSEnabled && !implicitTLS {
 		startTLSSupported, _ := client.Extension("STARTTLS")
 		if !startTLSSupported {
 			_ = client.Close()

@@ -85,7 +85,7 @@ func availabilityTestDB(t *testing.T, dialect string, matrix bool) *gorm.DB {
 	}
 	t.Cleanup(func() {
 		if matrix {
-			require.NoError(t, db.Migrator().DropTable(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}, &model.Ability{}))
+			require.NoError(t, db.Migrator().DropTable(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}, &model.NotificationDelivery{}, &model.Ability{}))
 		}
 		model.DB, model.LOG_DB, common.RedisEnabled = oldDB, oldLogDB, oldRedis
 		common.SetDatabaseTypes(oldType, oldLogType)
@@ -93,9 +93,9 @@ func availabilityTestDB(t *testing.T, dialect string, matrix bool) *gorm.DB {
 		require.NoError(t, sqlDB.Close())
 	})
 	if matrix {
-		require.NoError(t, db.Migrator().DropTable(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}, &model.Ability{}))
+		require.NoError(t, db.Migrator().DropTable(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}, &model.NotificationDelivery{}, &model.Ability{}))
 	}
-	require.NoError(t, db.AutoMigrate(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}))
+	require.NoError(t, db.AutoMigrate(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}, &model.NotificationDelivery{}))
 	if matrix {
 		require.NoError(t, db.AutoMigrate(&model.Ability{}))
 	}
@@ -136,7 +136,41 @@ func TestAvailabilityPersistenceDatabaseMatrix(t *testing.T) {
 			var version string
 			require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
 			t.Logf("database version: %s", version)
-			require.NoError(t, db.AutoMigrate(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}))
+			require.NoError(t, db.AutoMigrate(&model.AvailabilityProbeSample{}, &model.AvailabilityIncident{}, &model.NotificationDelivery{}))
+			require.NoError(t, db.AutoMigrate(&model.Channel{}))
+			t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(&model.Channel{})) })
+			diagnosticPair := model.AvailabilityPair{Model: "diagnostics-fixture", Group: "private"}
+			require.NoError(t, db.Create(&model.Channel{Id: 89001, Name: "Internal route", Key: "must-never-be-returned", BaseURL: new("http://private.invalid")}).Error)
+			for i, sample := range []model.AvailabilityProbeSample{
+				{Outcome: "success", LatencyMs: 100, ChannelID: 89001},
+				{Outcome: "success", LatencyMs: 200, ChannelID: 89001},
+				{Outcome: "failure", ReasonCode: "probe_failed", LatencyMs: 500, ChannelID: 89001},
+				{Outcome: "failure", ReasonCode: "probe_timeout", LatencyMs: 1000},
+				{Outcome: "unsupported", ReasonCode: "unsupported"},
+			} {
+				sample.ModelName, sample.Group, sample.CheckedAt = diagnosticPair.Model, diagnosticPair.Group, 100
+				sample.SampleKey = fmt.Sprintf("diagnostics-fixture-%d", i)
+				require.NoError(t, model.SaveAvailabilityProbe(context.Background(), sample))
+			}
+			diagnostics, err := model.QueryAvailabilityDiagnostics(context.Background(), "probe", diagnosticPair, 99, 101)
+			require.NoError(t, err)
+			assert.EqualValues(t, 4, diagnostics.RequestCount)
+			assert.EqualValues(t, 2, diagnostics.SuccessCount)
+			assert.EqualValues(t, 2, diagnostics.FailureCount)
+			assert.EqualValues(t, 1, diagnostics.UnsupportedCount)
+			require.NotNil(t, diagnostics.P50LatencyMs)
+			require.NotNil(t, diagnostics.P95LatencyMs)
+			require.NotNil(t, diagnostics.P99LatencyMs)
+			assert.EqualValues(t, 200, *diagnostics.P50LatencyMs)
+			assert.EqualValues(t, 1000, *diagnostics.P95LatencyMs)
+			assert.EqualValues(t, 1000, *diagnostics.P99LatencyMs)
+			assert.Equal(t, []model.AvailabilityErrorCount{{Category: "probe_failed", Count: 1}, {Category: "probe_timeout", Count: 1}}, diagnostics.ErrorCategories)
+			assert.Equal(t, []model.AvailabilityAffectedChannel{{ID: 89001, Name: "Internal route", Failures: 1}}, diagnostics.AffectedChannels)
+			assert.EqualValues(t, 1, diagnostics.UnattributedFailures)
+			encodedDiagnostics, err := common.Marshal(diagnostics)
+			require.NoError(t, err)
+			assert.NotContains(t, string(encodedDiagnostics), "must-never-be-returned")
+			assert.NotContains(t, string(encodedDiagnostics), "private.invalid")
 			ctx := context.Background()
 			now := int64(1800000000)
 			pair := model.AvailabilityPair{Model: "same-model", Group: "default"}
@@ -494,4 +528,67 @@ func TestAvailabilityRealWindowsAndUserProjection(t *testing.T) {
 	c.Set("role", common.RoleAdminUser)
 	GetAvailabilityIncidents(c)
 	assert.Contains(t, r.Body.String(), `"model_name":"busy"`, "administrators retain incident history after channel removal")
+}
+
+func TestAvailabilityDiagnosticsPrivilegesAndAggregation(t *testing.T) {
+	db := availabilityTestDB(t, "sqlite", false)
+	availabilityTestSettings(t, nil)
+	for _, role := range []int{0, common.RoleCommonUser} {
+		r := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(r)
+		c.Request = httptest.NewRequest(http.MethodGet, "/?model=hidden&group=private&source=probe&hours=24&channel_id=123", nil)
+		c.Set("role", role)
+		GetAvailabilityDiagnostics(c)
+		assert.Equal(t, http.StatusForbidden, r.Code)
+		assert.NotContains(t, r.Body.String(), "channel")
+		assert.NotContains(t, r.Body.String(), "request_count")
+	}
+	now := time.Now().Unix()
+	require.NoError(t, db.Create(&model.Ability{Model: "admin-model", Group: "default", ChannelId: 89901}).Error)
+	require.NoError(t, db.Create(&[]model.PerfMetric{
+		{ModelName: "admin-model", Group: "default", BucketTs: now - now%3600 - 3600, RequestCount: 10, SuccessCount: 7, TotalLatencyMs: 5000},
+		{ModelName: "admin-model", Group: "default", BucketTs: now - now%3600, RequestCount: 99, SuccessCount: 99},
+	}).Error)
+	for _, query := range []struct {
+		value string
+		code  int
+	}{
+		{"?model=admin-model&group=default&source=real&hours=24", 200},
+		{"?model=missing&group=default&source=probe&hours=24", 404},
+		{"?model=admin-model&group=default&source=invalid&hours=24", 400},
+		{"?model=admin-model&group=default&source=real&hours=8760", 400},
+		{"?source=real&hours=24", 400},
+	} {
+		r := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(r)
+		c.Request = httptest.NewRequest(http.MethodGet, "/"+query.value, nil)
+		c.Set("role", common.RoleAdminUser)
+		GetAvailabilityDiagnostics(c)
+		require.Equal(t, query.code, r.Code, query.value)
+		if query.code == 200 {
+			var response struct {
+				Data model.AvailabilityDiagnostics `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(r.Body.Bytes(), &response))
+			assert.EqualValues(t, 10, response.Data.RequestCount)
+			assert.EqualValues(t, 7, response.Data.SuccessCount)
+			assert.EqualValues(t, 3, response.Data.FailureCount)
+			assert.Nil(t, response.Data.P95LatencyMs, "averaged hourly latency cannot produce a percentile")
+			assert.Equal(t, "aggregated_real_metrics", response.Data.PercentileUnavailableReason)
+			assert.Positive(t, response.Data.CollectionDelaySeconds)
+			assert.Empty(t, response.Data.AffectedChannels, "configured channels are not evidence of affected channels")
+		}
+	}
+	pair := model.AvailabilityPair{Model: "capped-model", Group: "default"}
+	samples := make([]model.AvailabilityProbeSample, model.AvailabilityDiagnosticsSampleLimit+1)
+	for i := range samples {
+		samples[i] = model.AvailabilityProbeSample{SampleKey: fmt.Sprintf("cap-%d", i), PairKey: model.AvailabilityPairKey("probe", pair.Model, pair.Group), ModelName: pair.Model, Group: pair.Group, CheckedAt: now, Outcome: "success", LatencyMs: 100}
+	}
+	require.NoError(t, db.CreateInBatches(&samples, 500).Error)
+	data, err := model.QueryAvailabilityDiagnostics(context.Background(), "probe", pair, now-1, now+1)
+	require.NoError(t, err)
+	assert.True(t, data.Truncated)
+	assert.Equal(t, "sample_limit", data.PercentileUnavailableReason)
+	assert.Nil(t, data.P50LatencyMs)
+	assert.EqualValues(t, model.AvailabilityDiagnosticsSampleLimit+1, data.RequestCount, "counts remain complete when percentile loading is capped")
 }

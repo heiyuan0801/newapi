@@ -82,3 +82,8 @@ notify.token_budget_title: "API key spending budget reminder"
 notify.token_budget_daily: "One of your API keys has used at least 80% of its daily spending budget. New requests pause when the budget is exhausted. The daily budget resets at 00:00 UTC."
 notify.token_budget_monthly: "One of your API keys has used at least 80% of its monthly spending budget. New requests pause when the budget is exhausted. The monthly budget resets on the first day at 00:00 UTC."
 quota.token_budget_exhausted: "API key daily or monthly spending budget is exhausted"
+
+notification.test_subject: "Notification delivery test"
+notification.test_content: "This is a test notification from your administrator account."
+notification.ticket_reply_subject: "Support ticket reply"
+notification.ticket_reply_content: "Your support ticket #{{.TicketID}} has a new reply. Open {{.Link}} in the console."

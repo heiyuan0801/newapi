@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -358,4 +358,189 @@ it('refreshing after the last page shrinks displays the server-selected remainin
   await user.click(screen.getByRole('button', { name: 'Refresh tickets' }))
   expect(await screen.findByText('1 / 1')).toBeVisible()
   expect(screen.queryByText('No support tickets')).not.toBeInTheDocument()
+})
+
+it('support operators assign valid agents and change priority while visible messages are acknowledged', async () => {
+  const user = userEvent.setup()
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'support', role: 10 })
+  const post = vi
+    .spyOn(api, 'post')
+    .mockResolvedValue({ data: { success: true, data: {} } })
+  const patch = vi
+    .spyOn(api, 'patch')
+    .mockResolvedValue({ data: { success: true, data: ticket } })
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/support-tickets/assignees') {
+      return {
+        data: {
+          success: true,
+          data: {
+            items: [{ id: 2, display_name: 'Agent Two', username: 'support2' }],
+          },
+        },
+      }
+    }
+    return {
+      data: {
+        success: true,
+        data: {
+          ticket: {
+            ...ticket,
+            assigned_to_id: 2,
+            assigned_to_name: 'Agent Two',
+            priority: 'normal',
+          },
+          messages: [
+            {
+              id: 5,
+              ticket_id: 1,
+              author_type: 'user',
+              body: 'Question',
+              created_at: 100,
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+          events: [
+            {
+              id: 1,
+              ticket_id: 1,
+              actor_type: 'support',
+              kind: 'assigned',
+              old_value: '0',
+              new_value: '2',
+              created_at: 101,
+            },
+          ],
+          event_total: 1,
+        },
+      },
+    }
+  })
+  render(wrap(<TicketConversationDialog id={1} onClose={vi.fn()} />))
+  await screen.findByRole('combobox', { name: 'Ticket priority' })
+  await user.click(screen.getByRole('combobox', { name: 'Ticket priority' }))
+  await user.click(screen.getByRole('option', { name: 'High' }))
+  await waitFor(() =>
+    expect(patch).toHaveBeenCalledWith('/api/support-tickets/1', {
+      priority: 'high',
+    })
+  )
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith('/api/support-tickets/1/read', {
+      message_id: 5,
+    })
+  )
+  expect(
+    screen.getByRole('region', { name: 'Processing timeline' })
+  ).toHaveTextContent('Assignee changed')
+})
+it('owners see assignee and priority but cannot access assignment controls', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue({ data: { success: true, data: {} } })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        ticket: { ...ticket, assigned_to_name: 'Agent Two', priority: 'high' },
+        messages: [],
+        total: 0,
+        page: 1,
+        page_size: 20,
+        events: [],
+        event_total: 0,
+      },
+    },
+  })
+  render(wrap(<TicketConversationDialog id={1} onClose={vi.fn()} />))
+  expect(await screen.findByText('Assignee: Agent Two')).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Ticket assignee' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'Earlier ticket activity was not recorded in the timeline.'
+    )
+  ).toBeVisible()
+})
+
+it('a failed read acknowledgement retries once after the next successful refresh and clears unread replies', async () => {
+  const now = Date.now()
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+  let acknowledged = false
+  const detail = {
+    ticket,
+    messages: [
+      {
+        id: 5,
+        ticket_id: 1,
+        author_type: 'support',
+        body: 'Please try again',
+        created_at: 100,
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: 20,
+    events: [],
+    event_total: 0,
+  }
+  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data:
+        url === '/api/support-tickets'
+          ? {
+              items: [{ ...ticket, unread_count: acknowledged ? 0 : 1 }],
+              total: 1,
+              page: 1,
+              page_size: 20,
+            }
+          : detail,
+    },
+  }))
+  const post = vi
+    .spyOn(api, 'post')
+    .mockResolvedValueOnce({
+      data: { success: false, message: 'Temporary read failure' },
+    })
+    .mockImplementation(async () => {
+      acknowledged = true
+      return { data: { success: true, data: {} } }
+    })
+  function page() {
+    return wrap(
+      <>
+        <SupportTicketsPage />
+        <TicketConversationDialog id={1} onClose={vi.fn()} />
+      </>
+    )
+  }
+  const rendered = render(page())
+  expect(await screen.findByText('Unread replies: 1')).toBeVisible()
+  expect(
+    await screen.findByText(
+      'Unable to mark replies as read. It will retry after the next refresh.'
+    )
+  ).toBeVisible()
+  rendered.rerender(page())
+  expect(post).toHaveBeenCalledTimes(1)
+  clock.mockReturnValue(now + 30_000)
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['support-tickets', 'detail', 1] })
+  })
+  await waitFor(() =>
+    expect(screen.queryByText('Unread replies: 1')).not.toBeInTheDocument()
+  )
+  expect(post).toHaveBeenCalledTimes(2)
+  expect(
+    screen.queryByText(
+      'Unable to mark replies as read. It will retry after the next refresh.'
+    )
+  ).not.toBeInTheDocument()
+  clock.mockReturnValue(now + 60_000)
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['support-tickets', 'detail', 1] })
+  })
+  expect(post).toHaveBeenCalledTimes(2)
 })

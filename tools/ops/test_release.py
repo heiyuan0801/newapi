@@ -12,6 +12,7 @@ import socket
 import sys
 
 import release
+import drill
 
 
 class RecoveryTests(unittest.TestCase):
@@ -136,6 +137,26 @@ class RecoveryTests(unittest.TestCase):
         with patch.object(sys,'argv',args), patch.object(release,'service') as service:
             with self.assertRaises(release.OperationError):release.main()
             service.assert_not_called()
+
+    def test_drill_rejects_non_disposable_database_names_before_building_or_writing(self):
+        for name in ['production', 'new_api_ci_bad;DROP', 'new_api_ci_'+('x'*64)]:
+            output=self.root/'new-drill'
+            args=['drill.py','--output',str(output),'--sql-database',name]
+            with patch.object(sys,'argv',args), patch.object(drill,'run') as run:
+                with self.assertRaises(SystemExit) as rejected:
+                    drill.main()
+                self.assertEqual(2,rejected.exception.code)
+                run.assert_not_called()
+                self.assertFalse(output.exists())
+
+    def test_drill_gateway_does_not_inherit_external_database_or_redis_connections(self):
+        (self.root/'service.json').write_text(json.dumps({'port':19999}))
+        with patch.dict(os.environ,{'SQL_DSN':'synthetic-external-db','LOG_SQL_DSN':'synthetic-external-log','REDIS_CONN_STRING':'redis://synthetic-external-redis'}), patch.object(drill.subprocess,'Popen',return_value=SimpleNamespace(pid=12345)) as start:
+            drill.service_action(self.root,'start')
+        env=start.call_args.kwargs['env']
+        self.assertNotIn('SQL_DSN',env)
+        self.assertNotIn('LOG_SQL_DSN',env)
+        self.assertEqual('',env['REDIS_CONN_STRING'])
 
 
 if __name__ == '__main__':

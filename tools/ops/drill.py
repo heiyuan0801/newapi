@@ -63,6 +63,7 @@ def service_action(directory, action):
         (directory/'app.env').write_text('failed candidate modified config')
     env=dict(os.environ,PORT=str(settings['port']),SQLITE_PATH=str(directory/'main.sqlite'),SESSION_SECRET='disposable-recovery-drill-secret',SESSION_COOKIE_SECURE='false',TRUSTED_PROXIES='none',GENERATE_DEFAULT_TOKEN='false',UPDATE_TASK='false',TASK_PLUGIN_ENABLED='false',BATCH_UPDATE_ENABLED='false')
     env.pop('SQL_DSN',None);env.pop('LOG_SQL_DSN',None)
+    env['REDIS_CONN_STRING']=''
     with (directory/'gateway.log').open('ab') as output:
         process=subprocess.Popen([str(directory/'new-api'),'--log-dir',str(directory/'logs')],cwd=directory,env=env,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
     state.write_text(json.dumps({'pid':process.pid}))
@@ -73,9 +74,12 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--service-action',choices=['start','stop'],help=argparse.SUPPRESS)
     parser.add_argument('--sqlite-only',action='store_true')
+    parser.add_argument('--sql-database',default='new_api_ci_restore',help='New disposable native SQL database name; never replaces an existing database')
     args=parser.parse_args();out=args.output.resolve()
     if args.service_action:
         service_action(out,args.service_action);return
+    if not re.fullmatch(r'new_api_ci_[a-z0-9_]+',args.sql_database) or len(args.sql_database)>63:
+        parser.error('SQL drill database must be a new_api_ci_ name of at most 63 characters')
     out.mkdir(parents=True,mode=0o700,exist_ok=False)
     env=dict(os.environ,GOWORK='off',MATRIX_CONFIRM_DISPOSABLE='yes')
     for version in ['base','next']:
@@ -118,7 +122,7 @@ def main():
         for engine in ['mysql','postgres']:
             dsn=env[f'TEST_{engine.upper()}_DSN'];database=dsn.split('/')[-1].split('?')[0]
             assert database.startswith('new_api_ci_'),'Only disposable CI DSNs are accepted'
-            name='new_api_ci_restore'
+            name=args.sql_database
             if engine=='mysql':
                 match=re.fullmatch(r'([^:]+):(.*?)@tcp\(([^:]+):(\d+)\)/.*',dsn);assert match
                 user,password,host,dbport=match.groups()

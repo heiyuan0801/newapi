@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
-
-import { DataTablePagination } from '@/components/data-table'
+import { ServerPagination } from '@/components/server-pagination'
 
 export function TicketPagination(props: {
   items: { id: number }[]
@@ -27,19 +25,5 @@ export function TicketPagination(props: {
   disabled: boolean
   onPageChange: (page: number) => void
 }) {
-  const pagination = { pageIndex: props.page - 1, pageSize: 20 }
-  const table = useReactTable({
-    data: props.items,
-    columns: [],
-    getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
-    rowCount: props.total,
-    state: { pagination },
-    onPaginationChange: (updater) => {
-      if (props.disabled) return
-      const next = typeof updater === 'function' ? updater(pagination) : updater
-      props.onPageChange(next.pageIndex + 1)
-    },
-  })
-  return <DataTablePagination table={table} compact />
+  return <ServerPagination {...props} pageSize={20} />
 }

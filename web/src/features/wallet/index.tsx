@@ -33,6 +33,7 @@ import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialo
 import { MonthlyUsageReport } from './components/monthly-usage-report'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
+import { WalletReconciliationReport } from './components/wallet-reconciliation-report'
 import { WalletStatsCard } from './components/wallet-stats-card'
 import { DEFAULT_DISCOUNT_RATE, PAYMENT_TYPES } from './constants'
 import {
@@ -345,6 +346,7 @@ export function Wallet(props: WalletProps) {
             </aside>
           </div>
           <MonthlyUsageReport />
+          <WalletReconciliationReport />
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

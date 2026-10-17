@@ -22,28 +22,19 @@ import { initReactI18next } from 'react-i18next'
 
 import { convertDetectedLanguage } from './languages'
 import en from './locales/en.json'
-import fr from './locales/fr.json'
-import ja from './locales/ja.json'
-import ru from './locales/ru.json'
-import vi from './locales/vi.json'
-import zhTW from './locales/zh-TW.json'
-import zhCN from './locales/zh.json'
+import { LocaleResourceBackend } from './resource-backend'
 
 export const resources = {
   en,
-  zhCN,
-  fr,
-  ru,
-  ja,
-  vi,
-  zhTW,
 } as const
 
-i18n
+export const i18nReady = i18n
+  .use(new LocaleResourceBackend())
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources,
+    partialBundledLanguages: true,
     fallbackLng: 'en',
     supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
     load: 'currentOnly',

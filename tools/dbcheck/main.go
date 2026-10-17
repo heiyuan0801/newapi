@@ -51,10 +51,26 @@ func main() {
 		must(db.Where("model_name = ? AND bucket_ts = ?", perf.ModelName, perf.BucketTs).FirstOrCreate(&perf).Error)
 		option := model.Option{Key: "MatrixPreservedOption", Value: "matrix-preserved-value"}
 		must(db.Where(&model.Option{Key: option.Key}).FirstOrCreate(&option).Error)
+		// Use table projections rather than current feature structs so the same
+		// helper also compiles against the official release before these features.
+		if db.Migrator().HasTable("support_tickets") && db.Migrator().HasTable("support_ticket_messages") {
+			ticket := map[string]any{"user_id": user.Id, "title": "matrix-preserved-ticket", "status": "open", "reference_type": "", "reference_id": "", "model_name": "matrix-preserved-model", "group_name": "default", "reference_created_at": int64(0), "reference_status": "", "created_at": int64(1700000002), "updated_at": int64(1700000002), "version": 1}
+			must(db.Table("support_tickets").Create(ticket).Error)
+			var stored struct{ ID int }
+			must(db.Table("support_tickets").Select("id").Where("title = ? AND user_id = ?", "matrix-preserved-ticket", user.Id).Take(&stored).Error)
+			must(db.Table("support_ticket_messages").Create(map[string]any{"ticket_id": stored.ID, "author_id": user.Id, "author_type": "user", "body": "Synthetic migration fixture; no production information", "created_at": int64(1700000002)}).Error)
+		}
+		if db.Migrator().HasTable("availability_probe_samples") {
+			name, group := "matrix-preserved-model", "default"
+			pairKey := fmt.Sprintf("%x", sha256.Sum256(fmt.Appendf(nil, "%d:%s%d:%s%d:%s", len("probe"), "probe", len(name), name, len(group), group)))
+			must(db.Table("availability_probe_samples").Create(map[string]any{"sample_key": fmt.Sprintf("%x", sha256.Sum256([]byte("matrix-preserved-probe"))), "pair_key": pairKey, "model_name": name, "group": group, "checked_at": int64(1700000003), "outcome": "failure", "latency_ms": int64(123), "reason_code": "probe_failed"}).Error)
+		}
 	}
-	var sqliteVersion string
+	var databaseVersion string
 	if common.MainDatabaseType() == common.DatabaseTypeSQLite {
-		must(db.Raw("SELECT sqlite_version()").Scan(&sqliteVersion).Error)
+		must(db.Raw("SELECT sqlite_version()").Scan(&databaseVersion).Error)
+	} else {
+		must(db.Raw("SELECT VERSION()").Scan(&databaseVersion).Error)
 	}
 	tables, err := db.Migrator().GetTables()
 	must(err)
@@ -82,9 +98,16 @@ func main() {
 	}
 	type rows map[string][]map[string]any
 	values := rows{}
-	for _, table := range []string{"users", "channels", "tokens", "perf_metrics", "options"} {
+	for _, table := range []string{"users", "channels", "tokens", "perf_metrics", "options", "support_tickets", "support_ticket_messages", "availability_probe_samples"} {
+		if !db.Migrator().HasTable(table) {
+			continue
+		}
 		var result []map[string]any
-		must(db.Table(table).Find(&result).Error)
+		key := "id"
+		if table == "options" {
+			key = "key"
+		}
+		must(db.Table(table).Order(db.Statement.Quote(key)).Find(&result).Error)
 		for _, row := range result {
 			for key, value := range row {
 				if raw, ok := value.([]byte); ok {
@@ -115,7 +138,11 @@ func main() {
 	for _, row := range values["tokens"] {
 		delete(row, "key")
 	}
-	output := map[string]any{"version": common.Version, "captured_at": time.Now().UTC().Format(time.RFC3339), "sqlite_version": sqliteVersion, "counts": counts, "indexes": indexes, "rows": values, "sensitive_fixture_hashes": hashes}
+	sqliteVersion := ""
+	if common.MainDatabaseType() == common.DatabaseTypeSQLite {
+		sqliteVersion = databaseVersion
+	}
+	output := map[string]any{"version": common.Version, "captured_at": time.Now().UTC().Format(time.RFC3339), "database_version": databaseVersion, "sqlite_version": sqliteVersion, "counts": counts, "indexes": indexes, "rows": values, "sensitive_fixture_hashes": hashes}
 	data, err := common.Marshal(output)
 	must(err)
 	must(os.WriteFile(os.Getenv("MATRIX_SNAPSHOT"), append(data, '\n'), 0600))

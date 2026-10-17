@@ -86,8 +86,25 @@ function renderReport() {
   )
 }
 function mockReport(data: Partial<MonthlyWalletReport> = {}) {
-  return vi.spyOn(api, 'get').mockResolvedValue({
-    data: { success: true, data: { ...fixture, ...data } },
+  return vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/user/wallet/monthly/export') {
+      return {
+        data: new Blob(['month_utc,model\n'], { type: 'text/csv' }),
+        headers: { 'content-type': 'text/csv', 'x-export-status': 'complete' },
+      }
+    }
+    return {
+      data: {
+        success: true,
+        data: {
+          ...fixture,
+          page: 1,
+          page_size: 50,
+          total: fixture.rows.length,
+          ...data,
+        },
+      },
+    }
   })
 }
 beforeEach(() => {
@@ -109,19 +126,30 @@ afterEach(() => {
 })
 
 describe('monthly collected-usage report', () => {
-  it('keeps groups and tokens distinct and shows collection limits beside real amounts', async () => {
-    const get = mockReport()
-    renderReport()
-    const table = await screen.findByRole('table', {
-      name: 'Monthly usage breakdown',
+  it('shows the monthly statistics without rendering model, group or token detail rows', async () => {
+    const get = mockReport({
+      rows: [
+        { ...fixture.rows[0], model_name: 'demo-historical-model-001' },
+        fixture.rows[1],
+      ],
     })
-    expect(within(table).getAllByText('model-a')).toHaveLength(2)
-    expect(within(table).getByText('default')).toBeVisible()
-    expect(within(table).getByText('vip')).toBeVisible()
-    expect(within(table).getByText('Deleted token #12')).toBeVisible()
-    expect(
-      within(screen.getByLabelText('Monthly usage summary')).getByText('$3')
-    ).toBeVisible()
+    renderReport()
+    const summary = await screen.findByLabelText('Monthly usage summary')
+    expect(within(summary).getByText('$3')).toBeVisible()
+    expect(within(summary).getByText('8')).toBeVisible()
+    expect(within(summary).getByText('1,234')).toBeVisible()
+    expect(within(summary).getByText('2')).toBeVisible()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    for (const detail of [
+      'demo-historical-model-001',
+      'model-a',
+      'default',
+      'vip',
+      'primary',
+      'Deleted token #12',
+    ]) {
+      expect(screen.queryByText(detail)).not.toBeInTheDocument()
+    }
     expect(
       screen.getByText(
         'Collected usage may be delayed or incomplete. This report is not a settlement ledger.'
@@ -133,7 +161,7 @@ describe('monthly collected-usage report', () => {
       )
     ).toBeVisible()
     expect(get).toHaveBeenCalledWith('/api/user/wallet/monthly', {
-      params: { month: currentMonth },
+      params: { month: currentMonth, p: 1, page_size: 50 },
     })
   })
 
@@ -141,14 +169,14 @@ describe('monthly collected-usage report', () => {
     const user = userEvent.setup()
     const get = mockReport()
     renderReport()
-    await screen.findByRole('table', { name: 'Monthly usage breakdown' })
+    await screen.findByLabelText('Monthly usage summary')
     const input = screen.getByLabelText('Month (UTC)')
     fireEvent.change(input, { target: { value: '2001-02' } })
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Query' }))
     await waitFor(() =>
       expect(get).toHaveBeenLastCalledWith('/api/user/wallet/monthly', {
-        params: { month: '2001-02' },
+        params: { month: '2001-02', p: 1, page_size: 50 },
       })
     )
     fireEvent.change(input, { target: { value: '9999-01' } })
@@ -159,16 +187,16 @@ describe('monthly collected-usage report', () => {
     ).toBeVisible()
   })
 
-  it('does not report missing or disabled collection as proof of no activity', async () => {
+  it('keeps zero statistics and the collection warning when collection is disabled', async () => {
     mockReport({
       collection_enabled: false,
       rows: [],
       summary: { quota: 0, count: 0, token_used: 0 },
     })
     renderReport()
-    expect(
-      await screen.findByText('No collected usage in this month')
-    ).toBeVisible()
+    const summary = await screen.findByLabelText('Monthly usage summary')
+    expect(within(summary).getByText('$0')).toBeVisible()
+    expect(within(summary).getAllByText('0')).toHaveLength(2)
     expect(
       screen.getByText(
         'Usage collection is disabled. Only previously collected usage is shown.'
@@ -176,9 +204,10 @@ describe('monthly collected-usage report', () => {
     ).toBeVisible()
     expect(
       screen.getByText(
-        'No recorded usage does not prove there was no account activity.'
+        'Collected usage may be delayed or incomplete. This report is not a settlement ledger.'
       )
     ).toBeVisible()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
   it('keeps failures separate from empty data and retries a business failure', async () => {
@@ -196,16 +225,14 @@ describe('monthly collected-usage report', () => {
     ).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(
-      await screen.findByRole('table', { name: 'Monthly usage breakdown' })
-    ).toBeVisible()
+    expect(await screen.findByLabelText('Monthly usage summary')).toBeVisible()
   })
 
-  it('retains old records after a failed refresh and blocks exporting stale data', async () => {
+  it('retains the old statistics after a failed refresh and blocks exporting stale data', async () => {
     const user = userEvent.setup()
     const get = mockReport()
     renderReport()
-    await screen.findByRole('table', { name: 'Monthly usage breakdown' })
+    await screen.findByLabelText('Monthly usage summary')
     get.mockResolvedValue({
       data: { success: false, message: 'Report unavailable' },
     })
@@ -215,40 +242,34 @@ describe('monthly collected-usage report', () => {
         'Unable to refresh this report. Export is disabled until it refreshes successfully.'
       )
     ).toBeVisible()
-    expect(
-      screen.getByRole('table', { name: 'Monthly usage breakdown' })
-    ).toBeVisible()
+    expect(screen.getByLabelText('Monthly usage summary')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
-  it('labels truncation and blocks an incomplete CSV instead of silently dropping groups', async () => {
+  it('blocks an export flagged incomplete while keeping its recorded summary', async () => {
     mockReport({ truncated: true })
     renderReport()
     expect(
-      await screen.findByText(
-        /This view is truncated and CSV export is disabled/
+      within(await screen.findByLabelText('Monthly usage summary')).getByText(
+        '$3'
       )
     ).toBeVisible()
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
-  it('paginates collected groups using the shared controls and contains long labels in the table', async () => {
-    const user = userEvent.setup()
-    mockReport({
-      rows: Array.from({ length: 11 }, (_, index) => ({
-        ...fixture.rows[0],
-        model_name: index === 10 ? 'long-model-'.repeat(50) : `model-${index}`,
-      })),
-    })
+  it('does not add detail pagination for large monthly reports and keeps complete CSV export available', async () => {
+    mockReport({ total: 5101, page_count: 103 })
     renderReport()
-    await screen.findByText('model-0')
-    expect(screen.queryByText('long-model-'.repeat(50))).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Go to next page' }))
-    expect(screen.getByText('long-model-'.repeat(50))).toHaveClass(
-      'truncate',
-      'max-w-64'
-    )
-    expect(screen.queryByText('model-0')).not.toBeInTheDocument()
+    await screen.findByLabelText('Monthly usage summary')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Go to next page' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Go to previous page' })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('model-a')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
   })
 
   it('exports UTF-8 CSV through the existing browser-download boundary', async () => {
@@ -262,14 +283,86 @@ describe('monthly collected-usage report', () => {
       .spyOn(HTMLAnchorElement.prototype, 'click')
       .mockImplementation(() => undefined)
     renderReport()
-    await screen.findByRole('table', { name: 'Monthly usage breakdown' })
+    await screen.findByLabelText('Monthly usage summary')
     await user.click(screen.getByRole('button', { name: 'Export CSV' }))
-    expect(objectURL).toHaveBeenCalledWith(expect.any(Blob))
+    await waitFor(() =>
+      expect(objectURL).toHaveBeenCalledWith(expect.any(Blob))
+    )
     expect(click).toHaveBeenCalledTimes(1)
     expect(click.mock.instances[0]).toHaveAttribute(
       'download',
       `monthly-usage-${currentMonth}.csv`
     )
+  })
+  it('keeps the requested export month when another month is opened before download', async () => {
+    const user = userEvent.setup()
+    let completeExport!: (response: {
+      data: Blob
+      headers: Record<string, string>
+    }) => void
+    const pendingExport = new Promise<{
+      data: Blob
+      headers: Record<string, string>
+    }>((resolve) => {
+      completeExport = resolve
+    })
+    const get = mockReport()
+    get.mockImplementation(async (url) =>
+      url === '/api/user/wallet/monthly/export'
+        ? pendingExport
+        : { data: { success: true, data: fixture } }
+    )
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:delayed-report')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined)
+    renderReport()
+    await screen.findByLabelText('Monthly usage summary')
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }))
+    expect(screen.getByRole('button', { name: 'Exporting...' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Month (UTC)'), {
+      target: { value: '2001-02' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Query' }))
+    await waitFor(() =>
+      expect(get).toHaveBeenLastCalledWith('/api/user/wallet/monthly', {
+        params: { month: '2001-02', p: 1, page_size: 50 },
+      })
+    )
+    completeExport({
+      data: new Blob(['original month']),
+      headers: { 'content-type': 'text/csv', 'x-export-status': 'complete' },
+    })
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(click.mock.instances[0]).toHaveAttribute(
+      'download',
+      `monthly-usage-${currentMonth}.csv`
+    )
+  })
+  it('never downloads a JSON export failure as a CSV file', async () => {
+    const user = userEvent.setup()
+    const get = mockReport()
+    const objectURL = vi.spyOn(URL, 'createObjectURL')
+    renderReport()
+    await screen.findByLabelText('Monthly usage summary')
+    get.mockResolvedValueOnce({
+      data: new Blob(
+        [
+          JSON.stringify({
+            success: false,
+            message: 'Monthly report export is busy. Try again later.',
+          }),
+        ],
+        { type: 'application/json' }
+      ),
+      headers: { 'content-type': 'application/json' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }))
+    expect(
+      await screen.findByText('Monthly report export is busy. Try again later.')
+    ).toBeVisible()
+    expect(objectURL).not.toHaveBeenCalled()
   })
 })
 

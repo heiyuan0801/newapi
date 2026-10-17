@@ -16,28 +16,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Download, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { downloadCsv } from '@/features/usage-logs/lib/export'
+import { downloadBlob } from '@/features/usage-logs/lib/export'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatQuotaWithCurrency } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
-import { requireServerSuccess } from '@/lib/server-error-message'
+import {
+  getServerErrorMessage,
+  requireServerSuccess,
+} from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import { buildMonthlyReportCsv } from '../lib/monthly-report'
-import { getMonthlyWalletReport } from '../report-api'
-import { MonthlyUsageTable } from './monthly-usage-table'
+import {
+  exportMonthlyWalletReport,
+  getMonthlyWalletReport,
+} from '../report-api'
 
 export function MonthlyUsageReport() {
   const { t, i18n } = useTranslation()
@@ -46,6 +49,23 @@ export function MonthlyUsageReport() {
   const userID = useAuthStore((state) => state.auth.user?.id)
   const currentMonth = new Date().toISOString().slice(0, 7)
   const [month, setMonth] = useState(currentMonth)
+  const exportController = useRef<AbortController | null>(null)
+  useEffect(() => () => exportController.current?.abort(), [])
+  const exporting = useMutation({
+    mutationFn: async (exportMonth: string) => {
+      exportController.current = new AbortController()
+      return exportMonthlyWalletReport(
+        exportMonth,
+        exportController.current.signal
+      )
+    },
+    onSuccess: (blob, exportMonth) =>
+      downloadBlob(`monthly-usage-${exportMonth}.csv`, blob),
+    onSettled: () => {
+      exportController.current = null
+    },
+    meta: { errorToast: false },
+  })
   const [draftMonth, setDraftMonth] = useState(currentMonth)
   const validMonth =
     /^\d{4}-(0[1-9]|1[0-2])$/.test(draftMonth) &&
@@ -66,7 +86,8 @@ export function MonthlyUsageReport() {
     draftMonth === month &&
     !query.isFetching &&
     !query.isError &&
-    !report.truncated
+    !report.truncated &&
+    !exporting.isPending
 
   return (
     <section
@@ -97,7 +118,9 @@ export function MonthlyUsageReport() {
             disabled={!validMonth || query.isFetching}
             onClick={() => {
               if (draftMonth === month) void query.refetch()
-              else setMonth(draftMonth)
+              else {
+                setMonth(draftMonth)
+              }
             }}
           >
             <RefreshCw aria-hidden className='size-4' />
@@ -107,19 +130,24 @@ export function MonthlyUsageReport() {
             variant='outline'
             disabled={!canExport}
             onClick={() => {
-              if (canExport) {
-                downloadCsv(
-                  `monthly-usage-${report.month}.csv`,
-                  buildMonthlyReportCsv(report, t)
-                )
-              }
+              if (canExport) exporting.mutate(month)
             }}
           >
             <Download aria-hidden className='size-4' />
-            {t('Export CSV')}
+            {exporting.isPending ? t('Exporting...') : t('Export CSV')}
           </Button>
         </div>
       </div>
+      {exporting.isError && (
+        <Alert variant='destructive' className='m-4 w-auto'>
+          <AlertDescription>
+            {getServerErrorMessage(
+              exporting.error,
+              t('Unable to export monthly usage report')
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
       {!validMonth && (
         <p role='alert' className='text-destructive px-5 pt-3 text-sm'>
           {t('Choose a valid month up to the current UTC month.')}
@@ -208,17 +236,6 @@ export function MonthlyUsageReport() {
                 )}
               </AlertDescription>
             </Alert>
-          )}
-          {report.rows.length > 0 ? (
-            <MonthlyUsageTable key={month} rows={report.rows} />
-          ) : (
-            <EmptyState
-              className='min-h-40'
-              title={t('No collected usage in this month')}
-              description={t(
-                'No recorded usage does not prove there was no account activity.'
-              )}
-            />
           )}
         </div>
       )}

@@ -50,6 +50,8 @@ export type AvailabilityIncident = {
   resolved_at: number
   success_rate: number
   reason_code: string
+  notification_status?: string
+  recovery_notification_status?: string
 }
 
 export type AvailabilityIncidentsResponse = {

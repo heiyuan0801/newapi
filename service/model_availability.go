@@ -2,13 +2,11 @@ package service
 
 import (
 	"context"
-	"html"
 	"slices"
 	"sort"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/setting/availability_setting"
@@ -170,21 +168,7 @@ func ApplyAvailabilityObservation(ctx context.Context, observation model.Availab
 	if err != nil || notification == nil {
 		return err
 	}
-	// Re-check live opt-out and silence immediately before an external send.
-	current := availability_setting.Get()
-	if !current.AlertsEnabled || now < current.SilenceUntil || ctx.Err() != nil {
-		return nil
-	}
-	incident := notification.Incident
-	key := "availability.fault_subject"
-	contentKey := "availability.fault_content"
-	if notification.Recovery {
-		key = "availability.recovery_subject"
-		contentKey = "availability.recovery_content"
-	}
-	lang := RootUserLanguage()
-	variables := map[string]any{"Model": html.EscapeString(incident.ModelName), "Group": html.EscapeString(incident.Group), "Source": incident.Source, "Rate": incident.SuccessRate}
-	NotifyRootUser("model_availability", i18n.Translate(lang, key), i18n.Translate(lang, contentKey, variables))
+
 	return nil
 }
 

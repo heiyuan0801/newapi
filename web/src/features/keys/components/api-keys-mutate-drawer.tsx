@@ -100,12 +100,14 @@ type ApiKeyMutateDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentRow?: ApiKey
+  initialGroup?: string
 }
 
 export function ApiKeysMutateDrawer({
   open,
   onOpenChange,
   currentRow,
+  initialGroup,
 }: ApiKeyMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
@@ -237,9 +239,17 @@ export function ApiKeysMutateDrawer({
         setInitializedTarget(target)
       }
     } else {
-      form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+      const defaults = getApiKeyFormDefaultValues(
+        defaultUseAutoGroup && backendHasAuto
       )
+      if (
+        initialGroup &&
+        groups.some((group) => group.value === initialGroup)
+      ) {
+        defaults.group = initialGroup
+        if (initialGroup !== 'auto') defaults.cross_group_retry = false
+      }
+      form.reset(defaults)
       setInitializedTarget(target)
     }
   }, [
@@ -260,6 +270,8 @@ export function ApiKeysMutateDrawer({
     availableAutoGroupNames,
     maxAutoGroups,
     initializedTarget,
+    initialGroup,
+    groups,
   ])
 
   const formTarget =

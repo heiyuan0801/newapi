@@ -290,6 +290,11 @@ func (availabilityHistoryCleanupHandler) Interval() time.Duration { return 24 * 
 func (availabilityHistoryCleanupHandler) NewPayload() any         { return nil }
 func (availabilityHistoryCleanupHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	err := model.CleanupAvailabilityHistory(ctx, time.Now().Unix()-int64(max(availability_setting.Get().RetentionDays, 1))*86400)
+	if err == nil {
+		// Delivery records have a fixed retention independent of probe history;
+		// pending and leased work are never removed by this maintenance pass.
+		err = model.CleanupNotificationDeliveries(ctx, time.Now().Unix()-30*86400)
+	}
 	status := model.SystemTaskStatusSucceeded
 	if err != nil {
 		status = model.SystemTaskStatusFailed
@@ -312,6 +317,9 @@ func runAvailabilityProbe(ctx context.Context, runID string, userID int, pair mo
 	channel, selectErr := model.GetChannel(pair.Group, pair.Model, 0, nil)
 	if selectErr != nil {
 		return errors.New("availability channel selection failed")
+	}
+	if channel != nil {
+		sample.ChannelID = channel.Id
 	}
 	endpoint := availabilityProbeEndpoint(channel, pair.Model)
 	if channel != nil && endpoint == "" {

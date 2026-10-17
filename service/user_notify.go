@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -51,6 +52,10 @@ func NotifyUpstreamModelUpdateWatchers(render func(lang string) (subject string,
 }
 
 func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data dto.Notify) error {
+	return notifyUserWithContext(context.Background(), userId, userEmail, userSetting, data)
+}
+
+func notifyUserWithContext(ctx context.Context, userId int, userEmail string, userSetting dto.UserSetting, data dto.Notify) error {
 	notifyType := userSetting.NotifyType
 	if notifyType == "" {
 		notifyType = dto.NotifyTypeEmail
@@ -64,6 +69,9 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 	}
 	if !canSend {
 		return fmt.Errorf("notification limit exceeded for user %d with type %s", userId, notifyType)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	switch notifyType {
@@ -87,14 +95,14 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 
 		// 获取 webhook secret
 		webhookSecret := userSetting.WebhookSecret
-		return SendWebhookNotify(webhookURLStr, webhookSecret, data)
+		return sendWebhookNotifyWithContext(ctx, webhookURLStr, webhookSecret, data)
 	case dto.NotifyTypeBark:
 		barkURL := userSetting.BarkUrl
 		if barkURL == "" {
 			common.SysLog(common.LogText("user %d has no bark url, skip sending bark", userId))
 			return nil
 		}
-		return sendBarkNotify(barkURL, data)
+		return sendBarkNotifyWithContext(ctx, barkURL, data)
 	case dto.NotifyTypeGotify:
 		gotifyUrl := userSetting.GotifyUrl
 		gotifyToken := userSetting.GotifyToken
@@ -102,7 +110,7 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 			common.SysLog(common.LogText("user %d has no gotify url or token, skip sending gotify", userId))
 			return nil
 		}
-		return sendGotifyNotify(gotifyUrl, gotifyToken, userSetting.GotifyPriority, data)
+		return sendGotifyNotifyWithContext(ctx, gotifyUrl, gotifyToken, userSetting.GotifyPriority, data)
 	}
 	return nil
 }
@@ -118,6 +126,10 @@ func sendEmailNotify(userEmail string, data dto.Notify) error {
 }
 
 func sendBarkNotify(barkURL string, data dto.Notify) error {
+	return sendBarkNotifyWithContext(context.Background(), barkURL, data)
+}
+
+func sendBarkNotifyWithContext(ctx context.Context, barkURL string, data dto.Notify) error {
 	// 处理占位符
 	content := data.Content
 	for _, value := range data.Values {
@@ -144,7 +156,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 			},
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = doWorkerRequestWithContext(ctx, workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send bark request through worker: %v", err)
 		}
@@ -161,7 +173,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		}
 
 		// 直接发送请求
-		req, err = http.NewRequest(http.MethodGet, finalURL, nil)
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, finalURL, nil)
 		if err != nil {
 			return fmt.Errorf("failed to create bark request: %v", err)
 		}
@@ -187,6 +199,10 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 }
 
 func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data dto.Notify) error {
+	return sendGotifyNotifyWithContext(context.Background(), gotifyUrl, gotifyToken, priority, data)
+}
+
+func sendGotifyNotifyWithContext(ctx context.Context, gotifyUrl string, gotifyToken string, priority int, data dto.Notify) error {
 	// 处理占位符
 	content := data.Content
 	for _, value := range data.Values {
@@ -237,7 +253,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 			Body: payloadBytes,
 		}
 
-		resp, err = DoWorkerRequest(workerReq)
+		resp, err = doWorkerRequestWithContext(ctx, workerReq)
 		if err != nil {
 			return fmt.Errorf("failed to send gotify request through worker: %v", err)
 		}
@@ -254,7 +270,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		}
 
 		// 直接发送请求
-		req, err = http.NewRequest(http.MethodPost, finalURL, bytes.NewBuffer(payloadBytes))
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, finalURL, bytes.NewBuffer(payloadBytes))
 		if err != nil {
 			return fmt.Errorf("failed to create gotify request: %v", err)
 		}

@@ -24,6 +24,7 @@ import { toast } from 'sonner'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Form } from '@/components/ui/form'
+import { NotificationDeliveriesPanel } from '@/features/notification-deliveries'
 
 import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
@@ -157,6 +158,7 @@ export function AvailabilityMonitoringSettingsSection(props: {
           />
         </SettingsForm>
       </Form>
+      <NotificationDeliveriesPanel />
     </SettingsSection>
   )
 }

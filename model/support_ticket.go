@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -32,6 +33,10 @@ type SupportTicket struct {
 	CreatedAt          int64  `json:"created_at"`
 	UpdatedAt          int64  `json:"updated_at" gorm:"index:idx_support_owner_updated,priority:2"`
 	Version            int    `json:"-"`
+	AssignedToID       int    `json:"assigned_to_id" gorm:"default:0;index"`
+	Priority           string `json:"priority" gorm:"type:varchar(16);default:normal;index"`
+	UnreadCount        int64  `json:"unread_count" gorm:"-"`
+	AssignedToName     string `json:"assigned_to_name" gorm:"-"`
 }
 
 type SupportTicketMessage struct {
@@ -64,7 +69,7 @@ func CreateSupportTicket(ctx context.Context, userId int, draft SupportTicketDra
 		return nil, ErrSupportTicketInput
 	}
 	now := common.GetTimestamp()
-	ticket := &SupportTicket{UserId: userId, Title: draft.Title, Status: "open", ReferenceType: draft.ReferenceType, ReferenceId: draft.ReferenceId, CreatedAt: now, UpdatedAt: now, Version: 1}
+	ticket := &SupportTicket{UserId: userId, Title: draft.Title, Status: "open", ReferenceType: draft.ReferenceType, ReferenceId: draft.ReferenceId, CreatedAt: now, UpdatedAt: now, Version: 1, Priority: "normal"}
 	switch draft.ReferenceType {
 	case "":
 		if draft.ReferenceId != "" {
@@ -103,7 +108,10 @@ func CreateSupportTicket(ctx context.Context, userId int, draft SupportTicketDra
 		if err := tx.Create(ticket).Error; err != nil {
 			return err
 		}
-		return tx.Create(&SupportTicketMessage{TicketId: ticket.Id, AuthorId: userId, AuthorType: "user", Body: draft.Body, CreatedAt: now}).Error
+		if err := tx.Create(&SupportTicketMessage{TicketId: ticket.Id, AuthorId: userId, AuthorType: "user", Body: draft.Body, CreatedAt: now}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&SupportTicketEvent{TicketID: ticket.Id, ActorType: "user", Kind: "created", NewValue: "open", CreatedAt: now}).Error
 	})
 	return ticket, err
 }
@@ -123,6 +131,9 @@ func ListSupportTickets(ctx context.Context, userId int, all bool, status string
 	page = min(page, max(1, int((total+int64(pageSize)-1)/int64(pageSize))))
 	items := []SupportTicket{}
 	err := query.Order("updated_at DESC, id DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&items).Error
+	if err == nil {
+		err = fillSupportTicketUnread(ctx, items, userId)
+	}
 	return items, total, page, err
 }
 
@@ -135,6 +146,12 @@ func GetSupportTicket(ctx context.Context, id, userId int, admin bool) (*Support
 	err := query.Take(&ticket).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrSupportTicketNotFound
+	}
+	if err == nil {
+		items := []SupportTicket{ticket}
+		if err = fillSupportTicketUnread(ctx, items, userId); err == nil {
+			ticket = items[0]
+		}
 	}
 	return &ticket, err
 }
@@ -154,11 +171,25 @@ func GetSupportTicketMessages(ctx context.Context, ticketId, page, pageSize int)
 // same transaction as the reply. The version predicate also protects SQLite,
 // where SELECT FOR UPDATE is unavailable, from silently losing status changes.
 func ChangeSupportTicket(ctx context.Context, id, userId int, admin bool, status, body string) (*SupportTicket, error) {
-	body = strings.TrimSpace(body)
-	if body != "" && (status != "" || len(body) > 16384) {
+	return ChangeSupportTicketOperations(ctx, id, userId, admin, SupportTicketChange{Status: status, Body: body})
+}
+
+func ChangeSupportTicketOperations(ctx context.Context, id, userId int, admin bool, change SupportTicketChange) (*SupportTicket, error) {
+	status, body := change.Status, strings.TrimSpace(change.Body)
+	metadata := change.AssignedToID != nil || change.Priority != ""
+	if metadata && !admin {
 		return nil, ErrSupportTicketInput
 	}
-	if body == "" && (!ValidSupportStatus(status) || (!admin && status != "closed" && status != "open")) {
+	if change.Priority != "" && !ValidSupportPriority(change.Priority) {
+		return nil, ErrSupportTicketInput
+	}
+	if change.AssignedToID != nil && *change.AssignedToID < 0 {
+		return nil, ErrSupportTicketInput
+	}
+	if body != "" && (status != "" || metadata || len(body) > 16384) {
+		return nil, ErrSupportTicketInput
+	}
+	if body == "" && ((!metadata && status == "") || (status != "" && (!ValidSupportStatus(status) || (!admin && status != "closed" && status != "open")))) {
 		return nil, ErrSupportTicketInput
 	}
 	var ticket SupportTicket
@@ -193,7 +224,36 @@ func ChangeSupportTicket(ctx context.Context, id, userId int, admin bool, status
 			}
 		}
 		now := common.GetTimestamp()
-		result := tx.Model(&SupportTicket{}).Where("id = ? AND version = ?", id, ticket.Version).Updates(map[string]any{"status": status, "updated_at": now, "version": ticket.Version + 1})
+		actorType := "user"
+		if admin {
+			actorType = "support"
+		}
+		updates := map[string]any{"updated_at": now, "version": ticket.Version + 1}
+		events := []SupportTicketEvent{}
+		if status != "" && status != ticket.Status {
+			updates["status"] = status
+			events = append(events, SupportTicketEvent{TicketID: id, ActorType: actorType, Kind: "status", OldValue: ticket.Status, NewValue: status, CreatedAt: now})
+		}
+		if change.Priority != "" && change.Priority != ticket.Priority {
+			updates["priority"] = change.Priority
+			events = append(events, SupportTicketEvent{TicketID: id, ActorType: actorType, Kind: "priority", OldValue: ticket.Priority, NewValue: change.Priority, CreatedAt: now})
+			ticket.Priority = change.Priority
+		}
+		if change.AssignedToID != nil && *change.AssignedToID != ticket.AssignedToID {
+			if *change.AssignedToID > 0 {
+				var assignee User
+				if err := tx.Select("id").Where("id = ? AND role >= ? AND status = ?", *change.AssignedToID, common.RoleAdminUser, common.UserStatusEnabled).Take(&assignee).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return ErrSupportTicketInput
+					}
+					return err
+				}
+			}
+			updates["assigned_to_id"] = *change.AssignedToID
+			events = append(events, SupportTicketEvent{TicketID: id, ActorType: actorType, Kind: "assigned", OldValue: fmt.Sprint(ticket.AssignedToID), NewValue: fmt.Sprint(*change.AssignedToID), CreatedAt: now})
+			ticket.AssignedToID = *change.AssignedToID
+		}
+		result := tx.Model(&SupportTicket{}).Where("id = ? AND version = ?", id, ticket.Version).Updates(updates)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -205,11 +265,26 @@ func ChangeSupportTicket(ctx context.Context, id, userId int, admin bool, status
 			if admin {
 				authorType = "support"
 			}
-			if err := tx.Create(&SupportTicketMessage{TicketId: id, AuthorId: userId, AuthorType: authorType, Body: body, CreatedAt: now}).Error; err != nil {
+			message := SupportTicketMessage{TicketId: id, AuthorId: userId, AuthorType: authorType, Body: body, CreatedAt: now}
+			if err := tx.Create(&message).Error; err != nil {
+				return err
+			}
+			events = append(events, SupportTicketEvent{TicketID: id, ActorType: authorType, Kind: "reply", CreatedAt: now})
+			if admin && ticket.UserId != userId {
+				if _, err := EnqueueNotificationDeliveryTx(tx, NotificationDeliveryDraft{EventKey: fmt.Sprintf("support_ticket_reply:%d", message.Id), Kind: "support_ticket_reply", RecipientID: ticket.UserId, TicketID: id}, now); err != nil {
+					return err
+				}
+			}
+		}
+		if len(events) > 0 {
+			if err := tx.Create(&events).Error; err != nil {
 				return err
 			}
 		}
-		ticket.Status, ticket.UpdatedAt, ticket.Version = status, now, ticket.Version+1
+		if status != "" {
+			ticket.Status = status
+		}
+		ticket.UpdatedAt, ticket.Version = now, ticket.Version+1
 		return nil
 	})
 	return &ticket, err

@@ -38,6 +38,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { deliveryStatusLabels } from '@/features/notification-deliveries/constants'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { toIntlLocale } from '@/i18n/languages'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
@@ -53,6 +55,7 @@ const PAGE_SIZE = 20
 export function AvailabilityIncidents(props: { group: string }) {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
+  const admin = useIsAdmin()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [filters, setFilters] = useState<{
     source: AvailabilitySource | 'all'
@@ -266,6 +269,28 @@ export function AvailabilityIncidents(props: { group: string }) {
                   />
                 </div>
               </div>
+              {admin && (
+                <div className='text-muted-foreground col-span-full flex flex-wrap gap-4 text-xs'>
+                  <span>
+                    {t('Incident notification')}:{' '}
+                    {t(
+                      deliveryStatusLabels[
+                        item.notification_status || 'not_requested'
+                      ] || 'Not requested'
+                    )}
+                  </span>
+                  {item.status === 'resolved' && (
+                    <span>
+                      {t('Recovery notification')}:{' '}
+                      {t(
+                        deliveryStatusLabels[
+                          item.recovery_notification_status || 'not_requested'
+                        ] || 'Not requested'
+                      )}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className='min-w-0 space-y-1 text-sm'>
                 <p className='text-muted-foreground text-xs'>
                   {t('Incident started')}

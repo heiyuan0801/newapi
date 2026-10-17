@@ -59,6 +59,7 @@ import {
   getAvailabilityStatus,
   type AvailabilityCatalogModel,
 } from '../lib/availability'
+import { AvailabilityAdminDiagnostics } from './availability-admin-diagnostics'
 import { AvailabilityTimeline } from './availability-timeline'
 
 type AvailabilityDetailsProps = {
@@ -307,6 +308,13 @@ export function AvailabilityDetails(props: AvailabilityDetailsProps) {
       bodyClassName='flex min-w-0 flex-col gap-5'
     >
       {content}
+      <AvailabilityAdminDiagnostics
+        model={modelName}
+        group={props.group}
+        hours={props.hours}
+        source={isProbe ? 'probe' : 'real'}
+        open={props.open}
+      />
     </Dialog>
   )
 }
