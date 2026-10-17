@@ -343,9 +343,38 @@ func TestWalletReportsDatabaseMatrix(t *testing.T) {
 				csvRows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(recorder.Body.String(), "\xef\xbb\xbf"))).ReadAll()
 				require.NoError(t, err)
 				require.Len(t, csvRows, combinations+3)
-				assert.Equal(t, "month_utc", csvRows[0][0])
-				assert.Equal(t, "' =SUM(1,1)", csvRows[3][1])
-				assert.Equal(t, "'@malicious-token-formula", csvRows[1][4])
+				assert.Equal(t, []string{"month_utc", "model", "group", "token_id", "token_name", "requests", "tokens", "quota_units", "source", "report_type"}, csvRows[0])
+				// Text collations can order the formula model differently across
+				// databases, so verify every exported identity and value by content.
+				const escapedFormulaModel = "' =SUM(1,1)"
+				const escapedFormulaToken = "'@malicious-token-formula"
+				expectedRows := map[[3]string][]string{
+					{"model-a", "default", "11"}: {"2026-01", "model-a", "default", "11", escapedFormulaToken, "5", "90", "300", "quota_data", "collected_usage_not_settlement_ledger"},
+					{"model-a", "vip", "12"}:     {"2026-01", "model-a", "vip", "12", "", "1", "20", "70", "quota_data", "collected_usage_not_settlement_ledger"},
+				}
+				for i := range combinations {
+					name := fmt.Sprintf("bulk-%04d", i)
+					if i == 0 {
+						name = escapedFormulaModel
+					}
+					expectedRows[[3]string{name, "default", "11"}] = []string{"2026-01", name, "default", "11", escapedFormulaToken, "1", "2", "1", "quota_data", "collected_usage_not_settlement_ledger"}
+				}
+				seenRows := make(map[[3]string]bool, len(expectedRows))
+				formulaRows := 0
+				for _, row := range csvRows[1:] {
+					require.Len(t, row, 10)
+					identity := [3]string{row[1], row[2], row[3]}
+					expected, exists := expectedRows[identity]
+					require.True(t, exists, "unexpected exported identity %q", identity)
+					assert.False(t, seenRows[identity], "duplicate exported identity %q", identity)
+					seenRows[identity] = true
+					assert.Equal(t, expected, row)
+					if row[1] == escapedFormulaModel {
+						formulaRows++
+					}
+				}
+				assert.Len(t, seenRows, len(expectedRows), "every expected identity must be exported exactly once")
+				assert.Equal(t, 1, formulaRows, "the neutralized formula model must appear exactly once")
 				assert.NotContains(t, recorder.Body.String(), "private-model")
 				assert.NotContains(t, recorder.Body.String(), "other-secret-token")
 				cancelled, cancel := context.WithCancel(context.Background())
