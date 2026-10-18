@@ -111,11 +111,18 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function renderPage(path = '/security') {
+async function renderPage(
+  path = '/security',
+  status: {
+    quota_remind_enabled?: boolean
+    quota_remind_threshold?: number
+  } = {}
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   client.setQueryData(['status'], {
+    ...status,
     checkin_enabled: false,
     wechat_login: true,
     github_oauth: true,
@@ -264,6 +271,9 @@ describe('security page migration', () => {
     )
     expect(screen.getByRole('button', { name: 'Save Settings' })).toBeVisible()
     expect(
+      screen.getByRole('switch', { name: 'Low balance reminder' })
+    ).toBeChecked()
+    expect(
       screen.queryByRole('list', { name: 'Account Bindings' })
     ).not.toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalledWith('/api/user/2fa/status')
@@ -279,6 +289,37 @@ describe('security page migration', () => {
       )
     )
     expect(api.get).toHaveBeenCalledWith('/api/user/sessions')
+  })
+
+  it('Profile hides low balance notifications when the site disables them', async () => {
+    const user = userEvent.setup()
+    await renderPage('/profile', { quota_remind_enabled: false })
+    await screen.findByRole('list', { name: 'Account Bindings' })
+    await user.click(
+      screen.getByRole('tab', { name: 'Subscription Notifications' })
+    )
+    expect(
+      screen.getByText('No notifications are available to you right now')
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('switch', { name: 'Low balance reminder' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('Profile displays the site reminder threshold when reminders are enabled', async () => {
+    const user = userEvent.setup()
+    await renderPage('/profile', {
+      quota_remind_enabled: true,
+      quota_remind_threshold: 1250000,
+    })
+    await screen.findByRole('list', { name: 'Account Bindings' })
+    await user.click(
+      screen.getByRole('tab', { name: 'Subscription Notifications' })
+    )
+    expect(
+      screen.getByRole('switch', { name: 'Low balance reminder' })
+    ).toBeChecked()
+    expect(screen.getByRole('spinbutton')).toHaveAttribute('placeholder', '2.5')
   })
 
   it('a failed profile load offers retry before exposing account actions', async () => {

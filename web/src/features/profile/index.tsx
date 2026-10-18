@@ -61,6 +61,9 @@ export function Profile() {
     status?.turnstile_check && status?.turnstile_site_key
   )
   const canConfigureSidebar = permissions?.sidebar_settings !== false
+  // Older cached status payloads lack these fields; the site default is on.
+  const quotaRemindEnabled = status?.quota_remind_enabled !== false
+  const quotaRemindThreshold = status?.quota_remind_threshold ?? 0
   const tabs = [
     { value: 'bindings', label: t('Account Bindings'), icon: Link2 },
     {
@@ -143,6 +146,8 @@ export function Profile() {
                     <NotificationTab
                       profile={profile}
                       onUpdate={refreshProfile}
+                      quotaRemindEnabled={quotaRemindEnabled}
+                      quotaRemindThreshold={quotaRemindThreshold}
                     />
                   </div>
                 )}

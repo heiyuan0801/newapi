@@ -178,7 +178,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: QuantumNous/new-api
-          ref: 633b4c5b190dc1af99a2814391354d86948e7943 # v1.0.0-rc.44
+          ref: 6cf0d90b5ff27f901697dddd61e0c28aba8efefc # v1.0.0-rc.45
           path: .ci-baseline
       - name: Check out the customized P0 migration baseline
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0

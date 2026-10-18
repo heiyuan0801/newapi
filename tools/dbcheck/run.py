@@ -12,8 +12,8 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE = '633b4c5b190dc1af99a2814391354d86948e7943'
-BASELINE_TAG = 'v1.0.0-rc.44'
+BASELINE = '6cf0d90b5ff27f901697dddd61e0c28aba8efefc'
+BASELINE_TAG = 'v1.0.0-rc.45'
 
 
 def run(command, cwd, env, log):
