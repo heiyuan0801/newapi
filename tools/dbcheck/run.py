@@ -12,8 +12,8 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE = '6cf0d90b5ff27f901697dddd61e0c28aba8efefc'
-BASELINE_TAG = 'v1.0.0-rc.45'
+BASELINE = '7d8b91268dab69d7150f345c448b5e250163146a'
+BASELINE_TAG = 'v1.0.0-rc.46'
 
 
 def run(command, cwd, env, log):
@@ -55,7 +55,7 @@ def main():
     object_root = args.baseline_root if (args.baseline_root/'.git').exists() else ROOT
     if object_root == args.baseline_root:
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=object_root).decode().strip() == args.baseline_ref, 'Wrong release commit'
-    for file in ['go.mod', 'go.sum', 'model/main.go', 'model/token.go', 'model/user.go', 'model/support_ticket.go', 'model/model_availability.go']:
+    for file in ['go.mod', 'go.sum', 'model/main.go', 'model/token.go', 'model/user.go', 'model/usedata.go', 'model/audit_log.go', 'model/support_ticket.go', 'model/model_availability.go']:
         exists = subprocess.run(['git', 'cat-file', '-e', f'{args.baseline_ref}:{file}'], cwd=object_root, stderr=subprocess.DEVNULL).returncode == 0
         if not exists:
             assert not (args.baseline_root / file).exists(), f'Unexpected baseline feature source: {file}'
@@ -103,6 +103,9 @@ def main():
             for token in second['rows']['tokens']:
                 assert token['daily_budget'] == token['monthly_budget'] == 0
                 assert not token['budget_reminder_enabled']
+        for usage in second['rows']['quota_data'] or []:
+            assert usage['cache_read_tokens'] == usage['cache_creation_tokens'] == 0, 'Historical cache counters must default to zero'
+        assert any(v['columns'] == ['created_at', 'event_id'] for v in second['indexes']['audit_logs']), 'Ordered audit index missing'
         for table in ['support_tickets', 'support_ticket_messages', 'affiliate_rewards', 'availability_incidents', 'availability_probe_samples', 'support_ticket_events', 'support_ticket_reads', 'notification_deliveries']:
             expected_count = old['counts'].get(table, 0) if kind == 'upgrade' else 0
             assert second['counts'][table] == expected_count, f'Unexpected data in {table}'
@@ -116,7 +119,7 @@ def main():
             assert any(v['columns'] == ['pair_key', 'checked_at'] for v in second['indexes']['availability_probe_samples']), 'Probe lookup composite index missing'
         assert any(v['unique'] and v['columns'] == ['invited_user_id'] for v in second['indexes']['affiliate_rewards'])
         log = (out/f'current-{kind}-2.log').read_text()
-        assert not re.search(r'\b(?:CREATE|ALTER|DROP)\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)[^\n]*(?:support_ticket(?:s|_messages|_events|_reads)|notification_deliveries|affiliate_rewards|availability_(?:incidents|probe_samples)|tokens|midjourneys)', log, re.I), 'Repeated startup changed feature schema'
+        assert not re.search(r'\b(?:CREATE|ALTER|DROP)\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)[^\n]*(?:support_ticket(?:s|_messages|_events|_reads)|notification_deliveries|affiliate_rewards|availability_(?:incidents|probe_samples)|tokens|midjourneys|quota_data|audit_logs)', log, re.I), 'Repeated startup changed feature schema'
         results.append({'mode':kind,'startups':2,'result':'passed'})
     result = {'engine':args.engine,'baseline_tag':args.baseline_tag,'baseline_commit':args.baseline_ref,'checks':results,'database_version':second['database_version'],'sqlite_version':second['sqlite_version'],'custom_legacy_fixtures_verified':old['counts'].get('support_tickets',0) > 0,'schema_source_sha256':hashlib.sha256((ROOT/'model/main.go').read_bytes()).hexdigest()}
     if result['custom_legacy_fixtures_verified']:

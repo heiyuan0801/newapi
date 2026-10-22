@@ -49,6 +49,10 @@ func main() {
 		must(db.Where("name = ?", token.Name).FirstOrCreate(&token).Error)
 		perf := model.PerfMetric{ModelName: "matrix-preserved-model", Group: "default", BucketTs: 1700000400, RequestCount: 17, SuccessCount: 13, TotalLatencyMs: 12345, TtftSumMs: 1234, TtftCount: 13, OutputTokens: 5678, GenerationMs: 6789}
 		must(db.Where("model_name = ? AND bucket_ts = ?", perf.ModelName, perf.BucketTs).FirstOrCreate(&perf).Error)
+		usage := model.QuotaData{UserID: user.Id, Username: user.Username, ModelName: "matrix-preserved-model", CreatedAt: 1700000400, Count: 2, Quota: 1234, TokenUsed: 5678, UseGroup: "default"}
+		must(db.Where("user_id = ? AND model_name = ?", usage.UserID, usage.ModelName).FirstOrCreate(&usage).Error)
+		audit := model.AuditLog{EventId: "matrix-preserved-audit", UserId: user.Id, Username: user.Username, CreatedAt: 1700000004, Category: "security", Action: "matrix_migration_fixture", Status: 200, Success: true}
+		must(db.Where("event_id = ?", audit.EventId).FirstOrCreate(&audit).Error)
 		option := model.Option{Key: "MatrixPreservedOption", Value: "matrix-preserved-value"}
 		must(db.Where(&model.Option{Key: option.Key}).FirstOrCreate(&option).Error)
 		// Use table projections rather than current feature structs so the same
@@ -89,16 +93,41 @@ func main() {
 		counts[table] = count
 		list, e := db.Migrator().GetIndexes(table)
 		must(e)
+		// PostgreSQL's GORM driver may return composite columns in table order.
+		// Read the actual key ordinality so migration checks protect index order.
+		orderedColumns := map[string][]string{}
+		if common.MainDatabaseType() == common.DatabaseTypePostgreSQL {
+			var keys []struct {
+				IndexName  string
+				ColumnName string
+			}
+			must(db.Raw(`SELECT idx.relname AS index_name, a.attname AS column_name
+FROM pg_index i
+JOIN pg_class idx ON idx.oid = i.indexrelid
+JOIN pg_class tbl ON tbl.oid = i.indrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, position) ON true
+JOIN pg_attribute a ON a.attrelid = tbl.oid AND a.attnum = k.attnum
+WHERE ns.nspname = current_schema() AND tbl.relname = ?
+ORDER BY idx.relname, k.position`, table).Scan(&keys).Error)
+			for _, key := range keys {
+				orderedColumns[key.IndexName] = append(orderedColumns[key.IndexName], key.ColumnName)
+			}
+		}
 		for _, v := range list {
 			u, _ := v.Unique()
 			p, _ := v.PrimaryKey()
-			indexes[table] = append(indexes[table], indexInfo{v.Name(), v.Columns(), u, p})
+			columns := v.Columns()
+			if ordered, ok := orderedColumns[v.Name()]; ok {
+				columns = ordered
+			}
+			indexes[table] = append(indexes[table], indexInfo{v.Name(), columns, u, p})
 		}
 		sort.Slice(indexes[table], func(i, j int) bool { return indexes[table][i].Name < indexes[table][j].Name })
 	}
 	type rows map[string][]map[string]any
 	values := rows{}
-	for _, table := range []string{"users", "channels", "tokens", "perf_metrics", "options", "support_tickets", "support_ticket_messages", "availability_probe_samples"} {
+	for _, table := range []string{"users", "channels", "tokens", "perf_metrics", "quota_data", "audit_logs", "options", "support_tickets", "support_ticket_messages", "availability_probe_samples"} {
 		if !db.Migrator().HasTable(table) {
 			continue
 		}

@@ -1855,6 +1855,36 @@ func TestTokenBudgetDisablesTrustedBypassAndSettlesActualUsage(t *testing.T) {
 	assert.Equal(t, int64(40), token.DailyBudgetUsed)
 }
 
+func TestTaskRetryReservationPreservesTokenBudgetAndCompensatesRejectedIncrease(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	seedToken(t, 1, 1, "budget-task-retry-key", 1000)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 1).Update("daily_budget", 100).Error)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: 1, TokenKey: "budget-task-retry-key", StartTime: time.Now(), ForcePreConsume: true, UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}}
+	require.Nil(t, PreConsumeBilling(c, 60, info))
+	session := info.Billing
+	require.NotNil(t, PreConsumeBilling(c, 120, info), "a more expensive retry must not exceed the daily budget")
+	assert.Same(t, session, info.Billing)
+	var user model.User
+	var token model.Token
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, 940, user.Quota, "the rejected increase must restore its wallet reservation")
+	assert.Equal(t, 940, token.RemainQuota)
+	assert.Equal(t, int64(60), token.DailyBudgetUsed)
+
+	require.Nil(t, PreConsumeBilling(c, 80, info))
+	require.NoError(t, session.Settle(40))
+	require.NoError(t, session.Settle(40))
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	require.NoError(t, model.DB.First(&token, 1).Error)
+	assert.Equal(t, 960, user.Quota)
+	assert.Equal(t, 960, token.RemainQuota)
+	assert.Equal(t, int64(40), token.DailyBudgetUsed, "actual usage is charged once across channel retries")
+}
+
 func TestTokenBudgetFundingFailureCompensatesReservation(t *testing.T) {
 	truncate(t)
 	seedUser(t, 1, 10)

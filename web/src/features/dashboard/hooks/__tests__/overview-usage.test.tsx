@@ -88,6 +88,8 @@ describe('overview usage date rollover', () => {
         count: 3,
         quota: 250000,
         token_used: 700,
+        cache_read_tokens: 120,
+        cache_creation_tokens: 40,
       },
     ]
     await act(async () => {
@@ -99,6 +101,8 @@ describe('overview usage date rollover', () => {
         totalQuota: 250000,
         totalCount: 3,
         totalTokens: 700,
+        totalCacheReadTokens: 120,
+        totalCacheCreationTokens: 40,
       })
     )
     expect(result.current.chart.todayStats).toEqual(
